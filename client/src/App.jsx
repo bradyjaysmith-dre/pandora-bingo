@@ -101,7 +101,14 @@ export default function App() {
 
   const handleSpotifyConnected = (tokens) => {
     setSpotifyTokens(tokens);
-    socket.emit('host:spotify_connect', tokens);
+    // Socket wasn't connected during the OAuth callback page — connect now,
+    // then emit once the connection is established.
+    if (!socket.connected) {
+      socket.connect();
+      socket.once('connect', () => socket.emit('host:spotify_connect', tokens));
+    } else {
+      socket.emit('host:spotify_connect', tokens);
+    }
     window.history.pushState({}, '', '/');
     setScreen('home');
   };
