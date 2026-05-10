@@ -16,3 +16,6 @@ build = ["sh", "-c", "npm run install:all && npm run build"]
 [[ports]]
 localPort = 3002
 externalPort = 80
+
+[agent]
+expertMode = true
