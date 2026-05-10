@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import socket from '../socket.js';
+import { playHit, playGong, playBackfire, playWildcard, playPenalty, playWin } from '../sounds.js';
 
 function formatTime(seconds) {
   if (!seconds && seconds !== 0) return '--:--';
@@ -71,13 +72,13 @@ function NewlywedCard({ me, room, playerId, isArtistMode }) {
   const debtRemaining = Math.max(0, debt - totalDebtCleared);
 
   const nwS = {
-    debtBanner: { display:'flex', alignItems:'center', gap:10, padding:'10px 14px', borderRadius:8, marginBottom:14, background: debtRemaining > 0 ? '#450a0a' : '#14532d', border:`1px solid ${debtRemaining > 0 ? '#7f1d1d' : '#166534'}` },
-    debtText: { fontSize:13, fontWeight:600, color: debtRemaining > 0 ? '#fca5a5' : '#86efac', lineHeight:1.3 },
-    wildcardBanner: { display:'flex', alignItems:'center', gap:10, padding:'10px 14px', borderRadius:8, marginBottom:14, background:'#1c1505', border:'1px solid #92400e' },
+    debtBanner: { display:'flex', alignItems:'center', gap:10, padding:'10px 14px', borderRadius:8, marginBottom:14, background: debtRemaining > 0 ? GC.redDim : GC.greenDim, border:`1px solid ${debtRemaining > 0 ? 'rgba(248,113,113,0.3)' : 'rgba(74,222,128,0.3)'}` },
+    debtText: { fontSize:13, fontWeight:600, color: debtRemaining > 0 ? GC.red : GC.green, lineHeight:1.3 },
+    wildcardBanner: { display:'flex', alignItems:'center', gap:10, padding:'10px 14px', borderRadius:8, marginBottom:14, background:GC.amberDim, border:'1px solid rgba(255,179,71,0.3)' },
     sectionHeader: { display:'flex', alignItems:'center', gap:8, marginBottom:8 },
     sectionLabel: { fontSize:11, fontWeight:700, textTransform:'uppercase', letterSpacing:'0.05em' },
-    guessRow: (hit) => ({ padding:'10px 12px', borderRadius:8, marginBottom:6, background: hit?'#14532d':'#1e293b', border:`1px solid ${hit?'#166534':'#334155'}`, display:'flex', alignItems:'center', justifyContent:'space-between' }),
-    guessBadge: (hit) => ({ fontSize:11, fontWeight:700, padding:'2px 8px', borderRadius:10, background: hit?'#166534':'#334155', color: hit?'#86efac':'#64748b' }),
+    guessRow: (hit) => ({ padding:'10px 12px', borderRadius:8, marginBottom:6, background: hit ? GC.greenDim : GC.alt, border:`1px solid ${hit ? 'rgba(74,222,128,0.3)' : GC.border}`, display:'flex', alignItems:'center', justifyContent:'space-between' }),
+    guessBadge: (hit) => ({ fontSize:11, fontWeight:700, padding:'2px 8px', borderRadius:10, background: hit ? GC.greenDim : GC.panel, color: hit ? GC.green : GC.muted }),
   };
 
   return (
@@ -154,12 +155,12 @@ function GongShowCard({ me, room, isArtistMode }) {
   };
 
   const gsS = {
-    blindBanner: { display:'flex', alignItems:'center', gap:8, padding:'10px 14px', borderRadius:8, marginBottom:14, background:'#0f0f1a', border:'1px solid #4c1d95' },
-    blindText: { fontSize:13, color:'#c4b5fd', fontWeight:600 },
-    sectionHeader: { fontSize:11, fontWeight:700, textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:8 },
-    unrevealed: { fontSize:13, color:'#374151', fontStyle:'italic', marginBottom:8 },
-    gongItem: (fired) => ({ padding:'10px 12px', borderRadius:8, marginBottom:6, background: fired?'#1f0a0a':'#1e293b', border:`1px solid ${fired?'#7f1d1d':'#334155'}`, display:'flex', alignItems:'center', justifyContent:'space-between' }),
-    gongBadge: (fired) => ({ fontSize:11, fontWeight:700, padding:'2px 8px', borderRadius:10, background: fired?'#7f1d1d':'#1e293b', color: fired?'#fca5a5':'#64748b' }),
+    blindBanner: { display:'flex', alignItems:'center', gap:8, padding:'10px 14px', borderRadius:8, marginBottom:14, background:GC.alt, border:`1px solid ${GC.indigo}55` },
+    blindText: { fontSize:13, color:GC.indigo, fontWeight:600 },
+    sectionHeader: { fontSize:11, fontWeight:700, textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:8, color:GC.muted },
+    unrevealed: { fontSize:13, color:GC.muted, fontStyle:'italic', marginBottom:8 },
+    gongItem: (fired) => ({ padding:'10px 12px', borderRadius:8, marginBottom:6, background: fired ? GC.redDim : GC.alt, border:`1px solid ${fired ? 'rgba(248,113,113,0.3)' : GC.border}`, display:'flex', alignItems:'center', justifyContent:'space-between' }),
+    gongBadge: (fired) => ({ fontSize:11, fontWeight:700, padding:'2px 8px', borderRadius:10, background: fired ? GC.redDim : GC.panel, color: fired ? GC.red : GC.muted }),
   };
 
   const hiddenMainCount = blind ? (me.picks||[]).length - visiblePicks.length : 0;
@@ -238,14 +239,41 @@ function PlayedList({ room }) {
   );
 }
 
+// ─── Retro TV colour tokens (game screen) ────────────────────────────────────
+const GC = {
+  bg:      '#1a1a2e',
+  panel:   '#12122a',
+  alt:     '#0e0e1e',
+  border:  '#2a2a4a',
+  cyan:    '#00d4ff',
+  cyanDim: 'rgba(0,212,255,0.12)',
+  amber:   '#ffb347',
+  amberDim:'rgba(255,179,71,0.12)',
+  magenta: '#ff6b9d',
+  gold:    'rgba(255,215,0,0.75)',
+  green:   '#4ade80',
+  greenDim:'rgba(74,222,128,0.12)',
+  red:     '#f87171',
+  redDim:  'rgba(248,113,113,0.12)',
+  text:    '#e2e8f0',
+  muted:   '#6b7280',
+  indigo:  '#818cf8',
+};
+
 function cardStyles() {
   return {
     grid: { display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(180px, 1fr))', gap:8, marginBottom:8 },
-    song: (matched) => ({ padding:'10px 12px', borderRadius:8, background: matched?'#14532d':'#1e293b', border: matched?'1px solid #166534':'1px solid #334155' }),
-    songTitle: (matched) => ({ fontSize:13, fontWeight:600, color: matched?'#86efac':'#e2e8f0', marginBottom:2 }),
-    songArtist: (matched) => ({ fontSize:12, color: matched?'#4ade80':'#64748b' }),
-    playedLabel: { fontSize:12, color:'#64748b', textTransform:'uppercase', letterSpacing:'0.05em', fontWeight:600, marginBottom:8 },
-    playedChip: { padding:'6px 12px', borderRadius:20, fontSize:12, background:'#1e3a5f', color:'#93c5fd', border:'1px solid #1d4ed8' },
+    song: (matched) => ({
+      padding:'10px 12px', borderRadius:8,
+      background: matched ? GC.greenDim : GC.alt,
+      border: matched ? `1px solid rgba(74,222,128,0.35)` : `1px solid ${GC.border}`,
+      boxShadow: matched ? '0 0 10px rgba(74,222,128,0.15)' : 'none',
+      animation: matched ? 'pickHitPulse 0.7s ease-out' : 'none',
+    }),
+    songTitle: (matched) => ({ fontSize:13, fontWeight:600, color: matched ? GC.green : GC.text, marginBottom:2 }),
+    songArtist: (matched) => ({ fontSize:12, color: matched ? GC.green : GC.muted }),
+    playedLabel: { fontSize:11, color:GC.muted, textTransform:'uppercase', letterSpacing:'0.07em', fontWeight:700, marginBottom:8 },
+    playedChip: { padding:'5px 11px', borderRadius:20, fontSize:12, background:GC.cyanDim, color:GC.cyan, border:'1px solid rgba(0,212,255,0.25)' },
   };
 }
 
@@ -254,6 +282,13 @@ function cardStyles() {
 export default function GameScreen({ room, playerId, isHost, spotifyTokens, nowPlaying }) {
   const [tab, setTab] = useState('card');
   const [toasts, setToasts] = useState([]); // { id, message, color }
+
+  // Sound tracking refs
+  const prevPlayedSongsRef = useRef([]);
+  const prevWildcardsLenRef = useRef(0);
+  const prevBackupDebtRef = useRef(0);
+  const prevPhaseRef = useRef(null);
+  const prevGongEventsCountRef = useRef(0);
 
   const addToast = (message, color = '#fbbf24') => {
     const id = Date.now() + Math.random();
@@ -293,6 +328,62 @@ export default function GameScreen({ room, playerId, isHost, spotifyTokens, nowP
     return () => { socket.off('game:wildcards'); socket.off('game:gong_events'); };
   }, []);
 
+  // ─── Sound effects based on room state changes ───────────────────────────
+  useEffect(() => {
+    if (!room || !playerId) return;
+    const me = room.players.find(p => p.id === playerId);
+    if (!me) return;
+
+    const isArtistMode = room.pickMode === 'artists';
+    const currentPlayedCount = (room.playedSongs || []).length;
+    const prevPlayedCount = prevPlayedSongsRef.current.length;
+
+    // Check for new played songs
+    if (currentPlayedCount > prevPlayedCount) {
+      const newSongs = (room.playedSongs || []).slice(prevPlayedCount);
+      newSongs.forEach(song => {
+        const myPicks = [...(me.picks || []), ...(me.backups || []), ...(me.wildcards || [])];
+        const isMyMatch = myPicks.some(pick => {
+          if (isArtistMode) {
+            if (pick.id && song.artistIds && song.artistIds.length) return song.artistIds.includes(pick.id);
+            const pa = (song.artist || '').toLowerCase().split(/\s*[,&]\s*|\s+ft\.?\s+|\s+feat\.?\s+/).map(a => a.trim());
+            return pa.some(a => a === (pick.name || '').toLowerCase().trim());
+          }
+          if (pick.id && song.id) return pick.id === song.id;
+          return song.title === pick.title;
+        });
+        if (isMyMatch) {
+          playHit();
+        } else {
+          // Not my match — check if it might be a gong event
+          // (best approximation: song played but not my pick)
+          playGong();
+        }
+      });
+    }
+    prevPlayedSongsRef.current = room.playedSongs || [];
+
+    // Wildcards
+    const currentWildcardsLen = (me.wildcards || []).length;
+    if (currentWildcardsLen > prevWildcardsLenRef.current) {
+      playWildcard();
+    }
+    prevWildcardsLenRef.current = currentWildcardsLen;
+
+    // Backup debt (Newlywed mode)
+    const currentDebt = me.backupDebt || 0;
+    if (currentDebt > prevBackupDebtRef.current) {
+      playPenalty();
+    }
+    prevBackupDebtRef.current = currentDebt;
+
+    // Win
+    if (room.phase === 'ended' && prevPhaseRef.current !== 'ended') {
+      playWin();
+    }
+    prevPhaseRef.current = room.phase;
+  }, [room, playerId]);
+
   if (!room) return null;
 
   const me = room.players.find(p => p.id === playerId);
@@ -307,29 +398,74 @@ export default function GameScreen({ room, playerId, isHost, spotifyTokens, nowP
   const s = {
     wrap: { maxWidth:700, margin:'0 auto', padding:16 },
     topBar: { display:'flex', alignItems:'center', justifyContent:'space-between', padding:'16px 0', marginBottom:8 },
-    timer: { fontSize:32, fontWeight:800, color: urgent?'#f87171':'#fbbf24', fontFamily:'monospace' },
-    timerLabel: { fontSize:11, color:'#64748b', textTransform:'uppercase' },
-    nowPlaying: { background:'#1e293b', border:'1px solid #1DB954', borderRadius:10, padding:'12px 16px', marginBottom:12, display:'flex', alignItems:'center', gap:12 },
+    timer: {
+      fontSize:36, fontWeight:800,
+      color: urgent ? GC.red : GC.amber,
+      fontFamily:"'Orbitron', monospace",
+      textShadow: urgent ? '0 0 12px rgba(248,113,113,0.7)' : '0 0 12px rgba(255,179,71,0.6)',
+    },
+    timerLabel: { fontSize:11, color:GC.muted, textTransform:'uppercase', letterSpacing:'0.07em' },
+    nowPlaying: {
+      background:GC.alt, border:'1px solid #1DB954',
+      borderRadius:10, padding:'12px 16px', marginBottom:12,
+      display:'flex', alignItems:'center', gap:12,
+      boxShadow:'0 0 12px rgba(29,185,84,0.15)',
+    },
     nowPlayingLabel: { fontSize:11, color:'#1DB954', textTransform:'uppercase', fontWeight:700, marginBottom:2 },
-    nowPlayingTitle: { fontSize:15, fontWeight:700, color:'#f1f5f9' },
-    nowPlayingArtist: { fontSize:13, color:'#94a3b8' },
+    nowPlayingTitle: { fontSize:15, fontWeight:700, color:GC.text },
+    nowPlayingArtist: { fontSize:13, color:GC.muted },
     albumArt: { width:48, height:48, borderRadius:6, objectFit:'cover', flexShrink:0 },
     badge: (bg, color, border) => ({ display:'inline-block', padding:'3px 10px', borderRadius:20, fontSize:11, fontWeight:700, background:bg, color, border:`1px solid ${border}`, marginBottom:8, marginRight:6 }),
-    tabs: { display:'flex', gap:4, marginBottom:16, borderBottom:'1px solid #1e293b', paddingBottom:8 },
-    tab: (active) => ({ padding:'6px 16px', borderRadius:8, border:'none', cursor:'pointer', fontSize:13, fontWeight:600, background: active?'#6366f1':'transparent', color: active?'#fff':'#64748b' }),
-    scoreCard: (winning) => ({ padding:'12px 14px', borderRadius:8, background: winning?'#14532d':'#1e293b', border: winning?'1px solid #166534':'1px solid #334155' }),
-    scoreName: (winning) => ({ fontSize:12, color: winning?'#86efac':'#64748b', marginBottom:4 }),
-    scoreVal: (winning) => ({ fontSize:22, fontWeight:700, color: winning?'#4ade80':'#e2e8f0' }),
+    tabs: { display:'flex', gap:4, marginBottom:16, borderBottom:`1px solid ${GC.border}`, paddingBottom:8 },
+    tab: (active) => ({
+      padding:'6px 16px', borderRadius:8, border:`1px solid ${active ? GC.cyan : 'transparent'}`,
+      cursor:'pointer', fontSize:13, fontWeight:600,
+      background: active ? GC.cyanDim : 'transparent',
+      color: active ? GC.cyan : GC.muted,
+      boxShadow: active ? '0 0 8px rgba(0,212,255,0.2)' : 'none',
+    }),
+    scoreCard: (winning) => ({
+      padding:'12px 14px', borderRadius:8,
+      background: winning ? GC.greenDim : GC.alt,
+      border: winning ? '1px solid rgba(74,222,128,0.35)' : `1px solid ${GC.border}`,
+      boxShadow: winning ? '0 0 12px rgba(74,222,128,0.15)' : 'none',
+    }),
+    scoreName: (winning) => ({ fontSize:12, color: winning ? GC.green : GC.muted, marginBottom:4 }),
+    scoreVal: (winning) => ({ fontSize:22, fontWeight:700, color: winning ? GC.green : GC.text, fontFamily:"'Orbitron', monospace" }),
     scoreGrid: { display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(180px, 1fr))', gap:8 },
-    hostSong: (played) => ({ padding:'10px 12px', borderRadius:8, cursor: played?'default':'pointer', background: played?'#1e3a5f':'#1e293b', border: played?'1px solid #1d4ed8':'1px solid #334155', opacity: played?0.6:1 }),
+    hostSong: (played) => ({
+      padding:'10px 12px', borderRadius:8,
+      cursor: played ? 'default' : 'pointer',
+      background: played ? GC.cyanDim : GC.alt,
+      border: played ? `1px solid rgba(0,212,255,0.3)` : `1px solid ${GC.border}`,
+      opacity: played ? 0.55 : 1,
+    }),
     hostControls: { display:'flex', gap:8, marginTop:16, flexWrap:'wrap' },
-    btnAdd: { padding:'8px 16px', borderRadius:8, border:'1px solid #475569', background:'transparent', color:'#e2e8f0', cursor:'pointer', fontSize:13, fontWeight:600 },
-    btnEnd: { padding:'8px 16px', borderRadius:8, border:'none', background:'#7f1d1d', color:'#fca5a5', cursor:'pointer', fontSize:13, fontWeight:600 },
-    btnBlind: (on) => ({ padding:'8px 16px', borderRadius:8, border:`1px solid ${on?'#7c3aed':'#475569'}`, background: on?'#2e1065':'transparent', color: on?'#c4b5fd':'#e2e8f0', cursor:'pointer', fontSize:13, fontWeight:600 }),
+    btnAdd: {
+      padding:'8px 16px', borderRadius:8,
+      border:`1px solid ${GC.border}`, background:'transparent',
+      color:GC.text, cursor:'pointer', fontSize:13, fontWeight:600,
+    },
+    btnEnd: {
+      padding:'8px 16px', borderRadius:8,
+      border:'1px solid rgba(239,68,68,0.4)', background:GC.redDim,
+      color:GC.red, cursor:'pointer', fontSize:13, fontWeight:600,
+      boxShadow:'0 0 8px rgba(239,68,68,0.1)',
+    },
+    btnBlind: (on) => ({
+      padding:'8px 16px', borderRadius:8,
+      border:`1px solid ${on ? GC.indigo : GC.border}`,
+      background: on ? 'rgba(129,140,248,0.12)' : 'transparent',
+      color: on ? GC.indigo : GC.text, cursor:'pointer', fontSize:13, fontWeight:600,
+    }),
     playedList: { display:'flex', flexWrap:'wrap', gap:6, marginTop:12 },
-    playedChip: { padding:'4px 10px', borderRadius:20, fontSize:12, background:'#1e3a5f', color:'#93c5fd', border:'1px solid #1d4ed8' },
-    toastWrap: { position:'fixed', bottom:24, left:'50%', transform:'translateX(-50%)', zIndex:1000, display:'flex', flexDirection:'column', gap:8, alignItems:'center', pointerEvents:'none' },
-    toastItem: (color) => ({ padding:'10px 18px', borderRadius:8, fontSize:13, fontWeight:600, color, background:'#0f172a', border:`1px solid ${color}`, boxShadow:'0 4px 16px rgba(0,0,0,0.5)' }),
+    playedChip: { padding:'4px 10px', borderRadius:20, fontSize:12, background:GC.cyanDim, color:GC.cyan, border:'1px solid rgba(0,212,255,0.25)' },
+    toastWrap: { position:'fixed', bottom:72, left:'50%', transform:'translateX(-50%)', zIndex:1000, display:'flex', flexDirection:'column', gap:8, alignItems:'center', pointerEvents:'none' },
+    toastItem: (color) => ({
+      padding:'10px 18px', borderRadius:8, fontSize:13, fontWeight:600,
+      color, background:GC.panel, border:`1px solid ${color}`,
+      boxShadow:`0 4px 16px rgba(0,0,0,0.6), 0 0 12px ${color}44`,
+    }),
   };
 
   return (
@@ -347,16 +483,16 @@ export default function GameScreen({ room, playerId, isHost, spotifyTokens, nowP
         </div>
         <div style={{textAlign:'right'}}>
           <div style={s.timerLabel}>{isGongShow ? 'Points to win' : 'Win at'}</div>
-          <div style={{fontSize:18,fontWeight:700,color:'#e2e8f0'}}>{room.matchTarget} {isGongShow ? 'pts' : 'matches'}</div>
+          <div style={{fontSize:18,fontWeight:700,color:GC.text,fontFamily:"'Orbitron', monospace"}}>{room.matchTarget} {isGongShow ? 'pts' : 'matches'}</div>
         </div>
       </div>
 
       <div>
-        {isGongShow && <span style={s.badge('#1f0a0a','#f87171','#7f1d1d')}>🔔 Gong Show Bingo</span>}
-        {isNewlywed && <span style={s.badge('#451a03','#fbbf24','#92400e')}>🎯 Newlywed Bingo</span>}
-        <span style={s.badge('#312e81','#a5b4fc','#6366f1')}>{isArtistMode ? 'Artist mode' : 'Song mode'} — {room.genre}</span>
-        {isSpotifyMode && <span style={s.badge('#14532d','#86efac','#166534')}>Spotify</span>}
-        {isGongShow && room.blindMode && <span style={s.badge('#1a0533','#c4b5fd','#4c1d95')}>🙈 Blind</span>}
+        {isGongShow && <span style={s.badge(GC.redDim,GC.red,'rgba(248,113,113,0.3)')}>🔔 Gong Show Bingo</span>}
+        {isNewlywed && <span style={s.badge(GC.amberDim,GC.amber,'rgba(255,179,71,0.3)')}>🎯 Newlywed Bingo</span>}
+        <span style={s.badge('rgba(129,140,248,0.12)',GC.indigo,'rgba(129,140,248,0.3)')}>{isArtistMode ? 'Artist mode' : 'Song mode'} — {room.genre}</span>
+        {isSpotifyMode && <span style={s.badge('rgba(29,185,84,0.12)','#1DB954','rgba(29,185,84,0.3)')}>Spotify</span>}
+        {isGongShow && room.blindMode && <span style={s.badge('rgba(196,181,253,0.12)',GC.indigo,'rgba(129,140,248,0.3)')}>🙈 Blind</span>}
       </div>
 
       {nowPlaying && (

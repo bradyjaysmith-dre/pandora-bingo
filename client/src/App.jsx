@@ -6,12 +6,13 @@ import PickScreen from './components/PickScreen.jsx';
 import GameScreen from './components/GameScreen.jsx';
 import EndScreen from './components/EndScreen.jsx';
 import SpotifyCallback from './components/SpotifyCallback.jsx';
+import RoomCodeBadge from './components/RoomCodeBadge.jsx';
 
 const SESSION_KEY = 'pandora_session';
 
-function saveSession(data) { sessionStorage.setItem(SESSION_KEY, JSON.stringify(data)); }
-function loadSession() { try { return JSON.parse(sessionStorage.getItem(SESSION_KEY)); } catch { return null; } }
-function clearSession() { sessionStorage.removeItem(SESSION_KEY); }
+function saveSession(data) { localStorage.setItem(SESSION_KEY, JSON.stringify(data)); }
+function loadSession() { try { return JSON.parse(localStorage.getItem(SESSION_KEY)); } catch { return null; } }
+function clearSession() { localStorage.removeItem(SESSION_KEY); }
 
 export default function App() {
   const [screen, setScreen] = useState('home');
@@ -133,9 +134,9 @@ export default function App() {
   }
 
   return (
-    <div style={{ minHeight: '100vh', background: '#0f172a' }}>
+    <div style={{ minHeight: '100vh', background: '#1a1a2e' }}>
       {error && (
-        <div style={{ position:'fixed', top:16, left:'50%', transform:'translateX(-50%)', background:'#7f1d1d', color:'#fca5a5', padding:'10px 20px', borderRadius:8, zIndex:1000, fontSize:14 }}>
+        <div style={{ position:'fixed', top:16, left:'50%', transform:'translateX(-50%)', background:'rgba(26,26,46,0.95)', color:'#f87171', padding:'10px 20px', borderRadius:8, zIndex:1000, fontSize:14, border:'1px solid rgba(248,113,113,0.4)', boxShadow:'0 0 12px rgba(248,113,113,0.2)' }}>
           {error}
         </div>
       )}
@@ -145,13 +146,14 @@ export default function App() {
       {screen === 'waiting' && (
         <div style={{ display:'flex', alignItems:'center', justifyContent:'center', minHeight:'100vh' }}>
           <div style={{ textAlign:'center' }}>
-            <div style={{ fontSize:24, fontWeight:600, marginBottom:8 }}>Picks confirmed!</div>
-            <div style={{ color:'#94a3b8' }}>Waiting for other players...</div>
+            <div style={{ fontFamily:"'Orbitron', monospace", fontSize:22, fontWeight:800, color:'#ffb347', textShadow:'0 0 12px rgba(255,179,71,0.6)', marginBottom:10 }}>Picks confirmed!</div>
+            <div style={{ color:'rgba(0,212,255,0.7)', fontSize:14 }}>Waiting for other players...</div>
           </div>
         </div>
       )}
       {screen === 'game' && <GameScreen room={room} playerId={playerId} isHost={isHost} spotifyTokens={spotifyTokens} nowPlaying={nowPlaying} />}
       {screen === 'end' && <EndScreen room={room} playerId={playerId} isHost={isHost} onPlayAgain={handlePlayAgain} onLeave={goHome} />}
+      {room && screen !== 'home' && screen !== 'end' && <RoomCodeBadge code={room.code} />}
     </div>
   );
 }
