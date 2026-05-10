@@ -53,54 +53,44 @@ bash start.sh
 - Frontend runs on port 5174 (Vite dev server)
 - Access from other devices via Tailscale: http://100.70.143.100:5174/
 
-Press Ctrl+C to stop both servers.
+Press Ctrl+C or run `bash start.sh stop` to stop both servers.
 
 ### Production / Replit (public URL, no Tailscale)
 
-The server serves the built React frontend directly — no Vite dev server needed. Express and the frontend share a single port.
+The server can serve the built React frontend directly — no Vite dev server needed. Express and the frontend share a single port.
 
 ```bash
-npm run install:all   # install all dependencies (first time only)
-npm run build         # build the React app into client/dist
-npm start             # serve everything from port 3002
+cd client && npm run build   # build the React app into client/dist
+node server/index.js         # serve everything from port 3002
+```
+
+Or from the root:
+
+```bash
+npm run build && npm start
 ```
 
 See [REPLIT.md](./REPLIT.md) for full Replit deployment instructions.
 
 ## Deployment
 
-### Replit (live)
+### Replit (recommended for public/shareable games)
 
-The project is deployed on Replit at a public URL — no Tailscale required. Anyone with the link can join a game from any device including mobile.
+The project is ready to deploy on Replit with zero Tailscale required. `.replit` and `replit.nix` are included.
 
-The live deployment is at:
-```
-https://23d8b6f8-954c-4117-8cf4-8adfbfbbaf8b-00-2vhdse288vm11.worf.replit.dev
-```
+Quick steps:
+1. Import the repo into Replit
+2. Add Spotify credentials as Replit Secrets
+3. Update your Spotify app's redirect URI to your Replit URL
+4. Run `npm run install:all && npm run build` once in the Shell
+5. Click **Run** — Replit serves the full app on your public URL
 
-Secrets (Spotify credentials, PORT, SPOTIFY_REDIRECT_URI) are stored in Replit's Secrets manager. The Spotify redirect URI registered in the Spotify Developer Dashboard points to the Replit domain.
-
-#### Deploying updates
-
-Development still happens locally. To push an update to the live Replit deployment:
-
-```bash
-# On your local machine
-git add .
-git commit -m "your message"
-git push
-
-# Then in the Replit Shell
-git pull && npm run build && npm start
-```
-
-#### Free tier note
-
-On Replit's free tier the server sleeps after ~5 minutes of inactivity. Keep a browser tab open on the app during game nights to prevent it from sleeping. For always-on hosting, Replit Deployments (paid) keeps the server running indefinitely.
+See [REPLIT.md](./REPLIT.md) for the complete guide.
 
 ### How production mode works
 
 When `server/index.js` starts, it:
+- Detects whether it's running on Replit (`REPLIT_DEV_DOMAIN` env var)
 - Serves `client/dist` as static files from the same Express server
 - Derives the Spotify OAuth redirect URI dynamically from the request host, so it works on any domain without hardcoding
 - Sets CORS to same-origin (no separate frontend port in production)
@@ -230,7 +220,7 @@ All players can see a running list of songs that have been played during the gam
 
 Built on Socket.io. All game events are broadcast instantly to every player in the room — player joins, picks confirmed, songs detected, scores updated, gong events, penalties applied, wildcards awarded, game over.
 
-Players join from any device using the 6-character room code. On Replit, anyone with the URL can join from anywhere. On local, players join via Tailscale.
+Players join from any device using the 6-character room code. On Replit, anyone with the URL can join. On local, players join via Tailscale.
 
 ### Player Limit
 
@@ -257,10 +247,10 @@ The host authenticates via Spotify OAuth before creating a room. The server:
 4. Polls the Spotify now-playing endpoint every 5 seconds during gameplay
 5. Automatically triggers matches when a picked song or artist is detected
 
-The Spotify redirect URI is derived dynamically from the request host — no hardcoded URL. Register whichever URI matches your deployment in the Spotify Developer Dashboard:
+The Spotify redirect URI is derived dynamically from the request host — no hardcoded URL. Register whichever URI matches your deployment:
 
 - **Local:** `http://127.0.0.1:3002/auth/spotify/callback`
-- **Replit:** `https://23d8b6f8-954c-4117-8cf4-8adfbfbbaf8b-00-2vhdse288vm11.worf.replit.dev/auth/spotify/callback`
+- **Replit:** `https://<your-repl-name>.<your-username>.repl.co/auth/spotify/callback`
 
 Host setup state (genre, mode, all settings) is saved to session storage before the OAuth redirect and restored automatically on return, so no settings are lost during authentication.
 
@@ -294,7 +284,7 @@ Future: Last.fm scrobbling support is planned as an alternative to Spotify for u
 
 **Spotify redirect preserves setup state** — Before redirecting to Spotify OAuth, the host's in-progress room settings are saved to session storage. On return from Spotify, the settings are restored and the user lands back on the host setup screen with everything pre-filled.
 
-**Dynamic Spotify redirect URI** — The server derives the OAuth callback URL from the incoming request host (`x-forwarded-host` → `host`). This means the same codebase works locally, on Tailscale, and on Replit without any code changes — only the registered Spotify redirect URI needs to match the deployment.
+**Dynamic Spotify redirect URI** — The server derives the OAuth callback URL from the incoming request host (`x-forwarded-host` → `host`). This means the same codebase works locally, on Tailscale, and on Replit without any code changes — only the `.env` / Replit Secret needs to match the registered Spotify redirect URI.
 
 **Single-port production mode** — In production, Express serves the Vite-built frontend as static files from `client/dist`. The Socket.io path and all API routes share the same origin, eliminating CORS entirely. Local dev still uses the Vite dev server on 5174 for HMR.
 
@@ -308,7 +298,7 @@ pandora-bingo/
     game.js       Room state, player management, scoring logic, all game modes
     songs.js      Static song and artist pools by genre (50 each)
     spotify.js    Spotify OAuth, now-playing polling, token management
-    .env          Spotify credentials for local dev (not committed to git)
+    .env          Spotify credentials (not committed to git)
   client/
     src/
       App.jsx               Screen routing, socket event handling, session persistence
@@ -325,7 +315,6 @@ pandora-bingo/
   .replit         Replit run/build config
   replit.nix      Replit Nix environment (Node 20)
   REPLIT.md       Replit deployment guide
-  package.json    Root scripts: install:all, build, start, dev
   start.sh        Local one-command launcher (Vite + Express)
   .gitignore      Excludes .env, node_modules, client/dist
   README.md       This file
@@ -341,21 +330,29 @@ pandora-bingo/
 - v5-newlywed — Newlywed Bingo game mode with mains, backups, secret guesses, backup debt, wildcards
 - v6-gongshow — Gong Show Bingo game mode with mains, gong picks, backfire logic, blind mode
 - v7-bugfixes-and-persistence — Spotify redirect fix, play again in same room, mid-game join, player reconnection with session persistence
-- v8-replit — Production build mode, Replit deployment, dynamic Spotify redirect URI, single-port Express serving, public URL with no Tailscale required
-- v9-live-search — Live Spotify search in pick phase: search-as-you-type against full Spotify catalog; picks store track/artist IDs; server match detection ID-first with string fallback; artist matching uses Spotify artist IDs from now-playing payload; album art thumbnails in search results and pick chips; static genre pool retained as fallback for manual-mode rooms
+- v8-replit — Production build mode: Express serves built React frontend as static files; dynamic Spotify redirect URI; CORS handling for same-origin deployment; `.replit` + `replit.nix` config; no Tailscale required
 
 **Upcoming**
 
+**Live song search (major)**
+Replace the static 50-song genre pools with a real-time search-as-you-type interface backed by the Spotify catalog (or another source). Players start typing a song or artist name and results populate from the live database. Key implementation considerations:
+- Pick submissions must store the Spotify track ID alongside the title and artist, not just the title string
+- Server-side match detection migrates from title string comparison to track ID comparison, which eliminates current edge cases around featured artists, alternate titles, and capitalization
+- Artist mode similarly moves to Spotify artist IDs
+- The static `songs.js` pool can be retained as a fallback or removed entirely
+- Genre filtering may need to shift from a hard pool boundary to a search hint or playlist scope, since Spotify's catalog search is not strictly genre-tagged
+
 **Mobile music source detection (major)**
-Allow the host to play music from any app on their phone and have the game detect what's playing. Approaches under consideration:
-- **Spotify on mobile** — The existing Spotify OAuth + now-playing polling already works when the host's phone is the active Spotify device. No code changes needed.
-- **Last.fm scrobbling** — Any music app that scrobbles to Last.fm can feed the now-playing endpoint. Planned as a source option alongside Spotify.
-- **AudD / ACRCloud audio fingerprinting** — The host's browser captures a short audio sample from the device microphone and sends it to a fingerprinting API for identification. Works with any music source. Requires mic permission and an API key.
-- **Manual fallback** — Manual mode already supports any source.
+Allow the host to play music from any app on their phone (Spotify, Apple Music, Pandora, Amazon Music, etc.) and have the game detect what's playing. Approaches under consideration:
+- **Spotify on mobile** — The existing Spotify OAuth + now-playing polling already works when the host's phone is the active Spotify device. No code changes needed; host just plays Spotify on their phone while the game polls.
+- **Last.fm scrobbling** — Any music app that scrobbles to Last.fm (Spotify, Apple Music, others via third-party) can feed the now-playing endpoint. Planned as a source option alongside Spotify.
+- **AudD / ACRCloud audio fingerprinting** — The host's browser captures a short audio sample from the device microphone and sends it to a fingerprinting API for identification. Works with any music source. Requires mic permission and an API key; introduces latency vs. polling.
+- **Manual fallback** — Manual mode already supports any source. The host marks songs as they play.
 
 - Newlywed targeted guesses — assign a guess to a specific player rather than the field
+- Phone hosting support (requires HTTPS + Tailscale redirect URI for Spotify OAuth)
 - Spotify playback control (play/pause/skip from within the game)
 - Pre-game countdown timer
-- Last.fm scrobbling as alternative music source
+- Public rooms via cloudflared tunnel
 - Game history and leaderboard
 - Mobile-optimized UI improvements

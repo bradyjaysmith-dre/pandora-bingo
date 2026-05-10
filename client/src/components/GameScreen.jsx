@@ -8,24 +8,35 @@ function formatTime(seconds) {
   return m + ':' + String(s).padStart(2, '0');
 }
 
+// ─── Shared client-side match helper ──────────────────────────────────────────
+// Mirrors server game.js songMatchesPick: ID-first, string fallback.
+function pickMatchesSong(pick, song, isArtistMode) {
+  if (isArtistMode) {
+    if (pick.id && song.artistIds && song.artistIds.length) return song.artistIds.includes(pick.id);
+    const pa = (song.artist || '').toLowerCase().split(/\s*[,&]\s*|\s+ft\.?\s+|\s+feat\.?\s+/).map(a => a.trim());
+    return pa.some(a => a === (pick.name || '').toLowerCase().trim());
+  }
+  if (pick.id && song.id) return pick.id === song.id;
+  return song.title === pick.title;
+}
+
 // ─── Standard card ────────────────────────────────────────────────────────────
 
 function StandardCard({ me, room, isArtistMode }) {
   const s = cardStyles();
-  const isMatched = (pick) => isArtistMode
-    ? room.playedSongs.some(p => p.artist === pick.name)
-    : room.playedSongs.some(p => p.title === pick.title);
+  const isMatched = (pick) => room.playedSongs.some(s => pickMatchesSong(pick, s, isArtistMode));
 
   return (
     <>
       <div style={s.grid}>
         {me.picks.map((pick, i) => {
           const matched = isMatched(pick);
+          const matchedSongs = isArtistMode && matched ? room.playedSongs.filter(s => pickMatchesSong(pick, s, true)) : [];
           return (
             <div key={i} style={s.song(matched)}>
               <div style={s.songTitle(matched)}>{matched ? '✓ ' : ''}{isArtistMode ? pick.name : pick.title}</div>
               {!isArtistMode && <div style={s.songArtist(matched)}>{pick.artist}</div>}
-              {isArtistMode && matched && <div style={s.songArtist(matched)}>{room.playedSongs.filter(p => p.artist === pick.name).map(p => p.title).join(', ')}</div>}
+              {isArtistMode && matched && <div style={s.songArtist(matched)}>{matchedSongs.map(p => p.title).join(', ')}</div>}
             </div>
           );
         })}
@@ -40,13 +51,7 @@ function StandardCard({ me, room, isArtistMode }) {
 function NewlywedCard({ me, room, playerId, isArtistMode }) {
   const s = cardStyles();
 
-  const smp = (song, pick) => {
-    if (isArtistMode) {
-      const pa = song.artist.toLowerCase().split(/\s*[,&]\s*|\s+ft\.?\s+|\s+feat\.?\s+/).map(a => a.trim());
-      return pa.some(a => a === pick.name.toLowerCase().trim());
-    }
-    return song.title === pick.title;
-  };
+  const smp = (song, pick) => pickMatchesSong(pick, song, isArtistMode);
 
   const isMainMatched = (pick) => room.playedSongs.some(s => smp(s, pick));
   const isBackupPlayed = (pick) => room.playedSongs.some(s => smp(s, pick));
@@ -55,7 +60,7 @@ function NewlywedCard({ me, room, playerId, isArtistMode }) {
     if (!isMainMatched(pick)) return false;
     return room.players.some(p => {
       if (p.id === playerId) return false;
-      return [...(p.picks||[]),...(p.backups||[])].some(ep => isArtistMode ? ep.name===pick.name : ep.title===pick.title);
+      return [...(p.picks||[]),...(p.backups||[])].some(ep => pickMatchesSong(ep, { id: pick.id, title: pick.title, artist: pick.artist, artistIds: pick.artistIds }, isArtistMode));
     });
   };
 
@@ -128,13 +133,7 @@ function GongShowCard({ me, room, isArtistMode }) {
   const s = cardStyles();
   const blind = room.blindMode;
 
-  const smp = (song, pick) => {
-    if (isArtistMode) {
-      const pa = song.artist.toLowerCase().split(/\s*[,&]\s*|\s+ft\.?\s+|\s+feat\.?\s+/).map(a => a.trim());
-      return pa.some(a => a === pick.name.toLowerCase().trim());
-    }
-    return song.title === pick.title;
-  };
+  const smp = (song, pick) => pickMatchesSong(pick, song, isArtistMode);
 
   // In blind mode, only show revealed picks; otherwise show all
   const visiblePicks = blind

@@ -1,39 +1,215 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import socket from '../socket.js';
+
+// ─── Search hook ──────────────────────────────────────────────────────────────
+
+function useSpotifySearch(roomCode, pickMode, isSpotifyRoom) {
+  const [query, setQuery] = useState('');
+  const [results, setResults] = useState([]);
+  const [searching, setSearching] = useState(false);
+  const [searchError, setSearchError] = useState(null);
+  const debounceRef = useRef(null);
+
+  const search = useCallback((q) => {
+    if (!q.trim() || !isSpotifyRoom) { setResults([]); return; }
+    setSearching(true);
+    setSearchError(null);
+    const type = pickMode === 'artists' ? 'artist' : 'track';
+    fetch(`/api/spotify/search?q=${encodeURIComponent(q)}&type=${type}&room=${roomCode}`)
+      .then(r => r.json())
+      .then(data => {
+        if (Array.isArray(data)) setResults(data);
+        else { setResults([]); setSearchError(data.error || 'Search failed'); }
+      })
+      .catch(() => setSearchError('Search failed'))
+      .finally(() => setSearching(false));
+  }, [roomCode, pickMode, isSpotifyRoom]);
+
+  const handleQueryChange = (q) => {
+    setQuery(q);
+    clearTimeout(debounceRef.current);
+    if (!q.trim()) { setResults([]); setSearching(false); return; }
+    setSearching(true);
+    debounceRef.current = setTimeout(() => search(q), 300);
+  };
+
+  return { query, handleQueryChange, results, searching, searchError, setResults, setQuery };
+}
+
+// ─── Shared search input + results ───────────────────────────────────────────
+
+function SearchPicker({ roomCode, pickMode, isSpotifyRoom, pool, selected, onToggle, limit, accentColor = '#6366f1', accentBg = '#312e81', disabledKeys = new Set() }) {
+  const { query, handleQueryChange, results, searching, searchError, setResults, setQuery } = useSpotifySearch(roomCode, pickMode, isSpotifyRoom);
+  const isArtistMode = pickMode === 'artists';
+  const getKey = (item) => isArtistMode ? (item.id || item.name) : (item.id || item.title);
+  const getLabel = (item) => isArtistMode ? item.name : item.title;
+  const getSub = (item) => isArtistMode ? null : item.artist;
+  const isSelected = (item) => selected.some(s => getKey(s) === getKey(item));
+  const showResults = isSpotifyRoom && query.trim().length > 0;
+  const displayList = showResults ? results : pool;
+
+  const s = {
+    searchWrap: { position: 'relative', marginBottom: 12 },
+    searchInput: { width: '100%', padding: '10px 14px 10px 36px', borderRadius: 8, background: '#0f172a', color: '#e2e8f0', border: `1px solid ${accentColor}55`, fontSize: 14, boxSizing: 'border-box', outline: 'none' },
+    searchIcon: { position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)', fontSize: 15, color: '#64748b', pointerEvents: 'none' },
+    clearBtn: { position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', fontSize: 16, padding: '0 2px', lineHeight: 1 },
+    hint: { fontSize: 12, color: '#475569', marginBottom: 10, textAlign: 'center' },
+    searching: { fontSize: 12, color: '#64748b', textAlign: 'center', padding: '12px 0' },
+    error: { fontSize: 12, color: '#f87171', textAlign: 'center', padding: '8px 0' },
+    grid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 8, marginBottom: 16, maxHeight: 420, overflowY: 'auto' },
+    item: (sel, disabled) => ({
+      padding: '10px 12px', borderRadius: 8, cursor: disabled ? 'not-allowed' : 'pointer',
+      background: sel ? accentBg : (disabled ? '#111827' : '#1e293b'),
+      border: sel ? `2px solid ${accentColor}` : '1px solid #334155',
+      opacity: disabled ? 0.35 : 1,
+      display: 'flex', alignItems: 'center', gap: 8,
+    }),
+    thumb: { width: 32, height: 32, borderRadius: 4, objectFit: 'cover', flexShrink: 0, background: '#334155' },
+    textWrap: { minWidth: 0 },
+    itemTitle: (sel) => ({ fontSize: 13, fontWeight: 600, color: sel ? accentColor : '#e2e8f0', marginBottom: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }),
+    itemSub: { fontSize: 11, color: '#64748b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
+    noResults: { fontSize: 13, color: '#475569', textAlign: 'center', padding: '20px 0' },
+  };
+
+  return (
+    <div>
+      {isSpotifyRoom && (
+        <div style={s.searchWrap}>
+          <span style={s.searchIcon}>🔍</span>
+          <input
+            style={s.searchInput}
+            value={query}
+            onChange={e => handleQueryChange(e.target.value)}
+            placeholder={`Search ${isArtistMode ? 'artists' : 'songs'}...`}
+            autoComplete="off"
+          />
+          {query && <button style={s.clearBtn} onClick={() => { setQuery(''); setResults([]); }}>✕</button>}
+        </div>
+      )}
+      {!isSpotifyRoom && <div style={s.hint}>Pick from the genre pool below</div>}
+      {isSpotifyRoom && !query && <div style={s.hint}>Type to search the Spotify catalog, or scroll below for genre picks</div>}
+
+      {searching && <div style={s.searching}>Searching...</div>}
+      {searchError && <div style={s.error}>{searchError}</div>}
+
+      {!searching && (
+        <div style={s.grid}>
+          {displayList.length === 0 && query && !searching
+            ? <div style={s.noResults}>No results for "{query}"</div>
+            : displayList.map((item, i) => {
+                const key = getKey(item);
+                const sel = isSelected(item);
+                const disabled = disabledKeys.has(key) && !sel;
+                const thumb = item.albumArt || item.image || null;
+                return (
+                  <div key={item.id || i} style={s.item(sel, disabled)} onClick={() => !disabled && onToggle(item)}>
+                    {thumb && <img src={thumb} style={s.thumb} alt="" />}
+                    <div style={s.textWrap}>
+                      <div style={s.itemTitle(sel)}>{sel ? '✓ ' : ''}{getLabel(item)}</div>
+                      {getSub(item) && <div style={s.itemSub}>{getSub(item)}</div>}
+                    </div>
+                  </div>
+                );
+              })
+          }
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Selected chips strip ─────────────────────────────────────────────────────
+
+function SelectedChips({ picks, pickMode, onRemove, accentColor, limit }) {
+  const isArtistMode = pickMode === 'artists';
+  const s = {
+    wrap: { display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 12, minHeight: 32 },
+    chip: { display: 'flex', alignItems: 'center', gap: 6, padding: '4px 10px 4px 8px', borderRadius: 16, background: accentColor + '22', border: `1px solid ${accentColor}66`, fontSize: 12, color: accentColor, fontWeight: 600 },
+    chipThumb: { width: 18, height: 18, borderRadius: 3, objectFit: 'cover' },
+    removeBtn: { background: 'none', border: 'none', color: accentColor, cursor: 'pointer', fontSize: 14, padding: 0, lineHeight: 1, marginLeft: 2 },
+    empty: { fontSize: 12, color: '#334155', fontStyle: 'italic' },
+  };
+  return (
+    <div style={s.wrap}>
+      {picks.length === 0
+        ? <span style={s.empty}>None selected yet ({limit} needed)</span>
+        : picks.map((pick, i) => {
+            const label = isArtistMode ? pick.name : pick.title;
+            const thumb = pick.albumArt || pick.image || null;
+            return (
+              <span key={pick.id || i} style={s.chip}>
+                {thumb && <img src={thumb} style={s.chipThumb} alt="" />}
+                {label}
+                <button style={s.removeBtn} onClick={() => onRemove(pick)}>✕</button>
+              </span>
+            );
+          })
+      }
+    </div>
+  );
+}
+
+// ─── Progress dots ────────────────────────────────────────────────────────────
+
+function ProgressDots({ count, limit, color }) {
+  return (
+    <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
+      {Array.from({ length: limit }).map((_, i) => (
+        <div key={i} style={{ width: 28, height: 8, borderRadius: 4, background: i < count ? color : '#1e293b', border: '1px solid #334155' }} />
+      ))}
+    </div>
+  );
+}
 
 // ─── Standard ────────────────────────────────────────────────────────────────
 
 function StandardPickScreen({ room }) {
   const [picks, setPicks] = useState([]);
   const isArtistMode = room.pickMode === 'artists';
+  const isSpotifyRoom = room.musicSource === 'spotify';
   const pool = isArtistMode ? (room.artistPool || []) : (room.songPool || []);
-  const getKey = (item) => isArtistMode ? item.name : item.title;
-  const isSelected = (item) => picks.some(p => getKey(p) === getKey(item));
+  const getKey = (item) => isArtistMode ? (item.id || item.name) : (item.id || item.title);
+  const LIMIT = 5;
+
   const toggle = (item) => {
-    if (isSelected(item)) { setPicks(picks.filter(p => getKey(p) !== getKey(item))); }
-    else { if (picks.length >= 5) return; setPicks([...picks, item]); }
+    const key = getKey(item);
+    if (picks.some(p => getKey(p) === key)) {
+      setPicks(picks.filter(p => getKey(p) !== key));
+    } else {
+      if (picks.length >= LIMIT) return;
+      setPicks([...picks, item]);
+    }
   };
-  const confirm = () => { if (picks.length < 5) return; socket.emit('player:picks', { picks }); };
-  const s = standardStyles();
+
+  const confirm = () => {
+    if (picks.length < LIMIT) return;
+    socket.emit('player:picks', { picks });
+  };
+
+  const s = sharedStyles();
+
   return (
     <div style={s.wrap}>
-      <div style={s.title}>Pick your 5 {isArtistMode ? 'artists' : 'songs'}</div>
-      <div style={s.sub}>Genre: {room.genre}</div>
-      <div style={s.modeBadge}>{isArtistMode ? 'Artist mode' : 'Song mode'}</div>
-      <div style={s.progress}>{[0,1,2,3,4].map(i => <div key={i} style={s.dot(i < picks.length)} />)}</div>
-      <div style={s.grid}>
-        {pool.map((item, i) => {
-          const sel = isSelected(item);
-          return (
-            <div key={i} style={s.item(sel)} onClick={() => toggle(item)}>
-              <div style={s.itemTitle(sel)}>{sel ? '✓ ' : ''}{isArtistMode ? item.name : item.title}</div>
-              {!isArtistMode && <div style={s.itemSub(sel)}>{item.artist}</div>}
-            </div>
-          );
-        })}
-      </div>
-      <button style={s.btn(picks.length === 5, '#6366f1')} onClick={confirm} disabled={picks.length < 5}>
-        {picks.length === 5 ? 'Confirm picks' : `Select ${5 - picks.length} more`}
+      <div style={s.title}>Pick your {LIMIT} {isArtistMode ? 'artists' : 'songs'}</div>
+      <div style={s.sub}>Genre: {room.genre} · {isArtistMode ? 'Artist' : 'Song'} mode{isSpotifyRoom ? ' · Spotify search enabled' : ''}</div>
+
+      <ProgressDots count={picks.length} limit={LIMIT} color="#6366f1" />
+      <SelectedChips picks={picks} pickMode={room.pickMode} onRemove={(item) => toggle(item)} accentColor="#6366f1" limit={LIMIT} />
+
+      <SearchPicker
+        roomCode={room.code}
+        pickMode={room.pickMode}
+        isSpotifyRoom={isSpotifyRoom}
+        pool={pool}
+        selected={picks}
+        onToggle={toggle}
+        limit={LIMIT}
+        accentColor="#6366f1"
+        accentBg="#312e81"
+      />
+
+      <button style={s.btn(picks.length === LIMIT, '#6366f1')} onClick={confirm} disabled={picks.length < LIMIT}>
+        {picks.length === LIMIT ? 'Confirm picks' : `Select ${LIMIT - picks.length} more`}
       </button>
     </div>
   );
@@ -47,63 +223,114 @@ function NewlywedPickScreen({ room }) {
   const [backups, setBackups] = useState([]);
   const [guesses, setGuesses] = useState([]);
   const isArtistMode = room.pickMode === 'artists';
+  const isSpotifyRoom = room.musicSource === 'spotify';
   const pool = isArtistMode ? (room.artistPool || []) : (room.songPool || []);
-  const getKey = (item) => isArtistMode ? item.name : item.title;
+  const getKey = (item) => isArtistMode ? (item.id || item.name) : (item.id || item.title);
 
-  const committed = (currentPhase) => {
-    const taken = [];
-    if (currentPhase !== 'mains') taken.push(...mains);
-    if (currentPhase !== 'backups') taken.push(...backups);
-    if (currentPhase !== 'guesses') taken.push(...guesses);
-    return taken;
+  const allCommitted = (currentPhase) => {
+    const all = [];
+    if (currentPhase !== 'mains') all.push(...mains);
+    if (currentPhase !== 'backups') all.push(...backups);
+    if (currentPhase !== 'guesses') all.push(...guesses);
+    return new Set(all.map(getKey));
   };
-  const isCommitted = (item, currentPhase) => committed(currentPhase).some(p => getKey(p) === getKey(item));
-  const makePicker = (selected, setSelected, limit) => ({
-    isSelected: (item) => selected.some(p => getKey(p) === getKey(item)),
-    toggle: (item) => {
-      if (isCommitted(item, phase)) return;
-      if (selected.some(p => getKey(p) === getKey(item))) { setSelected(selected.filter(p => getKey(p) !== getKey(item))); }
-      else { if (selected.length >= limit) return; setSelected([...selected, item]); }
-    },
-    count: selected.length, limit,
-  });
 
-  const phasePicker = { mains: makePicker(mains, setMains, 5), backups: makePicker(backups, setBackups, 3), guesses: makePicker(guesses, setGuesses, 3) }[phase];
-
-  const phaseConfig = {
-    mains: { label:'Main picks', step:1, instruction:`Pick 5 ${isArtistMode ? 'artists' : 'songs'} you think will play.`, accentColor:'#6366f1', accentBg:'#312e81', accentBorder:'#6366f1', nextLabel:'Next: Pick backups →', nextReady: mains.length === 5, onNext: () => setPhase('backups') },
-    backups: { label:'Backup picks', step:2, instruction:`Pick 3 backup ${isArtistMode ? 'artists' : 'songs'}. These absorb penalties from opponents' successful guesses.`, accentColor:'#f59e0b', accentBg:'#1c1505', accentBorder:'#f59e0b', nextLabel:'Next: Secret guesses →', nextReady: backups.length === 3, onNext: () => setPhase('guesses') },
-    guesses: { label:'Secret guesses', step:3, instruction:`Pick 3 ${isArtistMode ? 'artists' : 'songs'} you think someone else picked. Hidden from all players. Hit 2 of 3 → earn a wildcard!`, accentColor:'#ec4899', accentBg:'#1f0617', accentBorder:'#ec4899', nextLabel:'Confirm all picks', nextReady: guesses.length === 3, onNext: () => socket.emit('player:newlywed_picks', { mains, backups, guesses }) },
+  const makePhasePicker = (selected, setSelected, limit) => {
+    const committedKeys = allCommitted(phase);
+    return {
+      toggle: (item) => {
+        const key = getKey(item);
+        if (committedKeys.has(key)) return;
+        if (selected.some(p => getKey(p) === key)) {
+          setSelected(selected.filter(p => getKey(p) !== key));
+        } else {
+          if (selected.length >= limit) return;
+          setSelected([...selected, item]);
+        }
+      },
+      disabledKeys: committedKeys,
+    };
   };
-  const cfg = phaseConfig[phase];
+
+  const phases = {
+    mains:   { label: 'Main picks',      step: 1, limit: 5,  color: '#6366f1', bg: '#312e81',  selected: mains,   setSelected: setMains,   nextLabel: 'Next: Backups →',        nextPhase: 'backups'  },
+    backups: { label: 'Backup picks',     step: 2, limit: 3,  color: '#f59e0b', bg: '#1c1505',  selected: backups, setSelected: setBackups, nextLabel: 'Next: Secret guesses →', nextPhase: 'guesses' },
+    guesses: { label: 'Secret guesses',   step: 3, limit: 3,  color: '#ec4899', bg: '#1f0617',  selected: guesses, setSelected: setGuesses, nextLabel: 'Confirm all picks',      nextPhase: null      },
+  };
+  const cfg = phases[phase];
+  const { toggle, disabledKeys } = makePhasePicker(cfg.selected, cfg.setSelected, cfg.limit);
+  const s = sharedStyles();
+
+  const handleNext = () => {
+    if (cfg.nextPhase) {
+      setPhase(cfg.nextPhase);
+    } else {
+      socket.emit('player:newlywed_picks', { mains, backups, guesses });
+    }
+  };
+
   const stepColors = ['#6366f1', '#f59e0b', '#ec4899'];
-  const s = newlywedStyles();
 
   return (
     <div style={s.wrap}>
       <div style={s.title}>Newlywed Bingo — {isArtistMode ? 'Artist' : 'Song'} mode</div>
-      <div style={s.sub}>Genre: {room.genre}</div>
-      <div style={s.stepBar}>{[0,1,2].map(i => <div key={i} style={s.step(cfg.step === i+1, cfg.step > i+1, stepColors[i])} />)}</div>
-      <div style={s.phaseLabel}><span style={{...s.phaseName, color: cfg.accentColor}}>{cfg.label}</span><span style={s.phaseStep}>Step {cfg.step} of 3</span></div>
-      <div style={s.instruction}>{cfg.instruction}</div>
-      {phase === 'guesses' && <div style={s.secretNote}><span>🔒</span><span style={s.secretText}>Hidden from other players until the end.</span></div>}
-      {phase !== 'mains' && mains.length > 0 && <div style={s.summaryBox}><div style={s.summaryLabel}>Your mains</div>{mains.map((item, i) => <span key={i} style={s.summaryChip('#6366f1')}>{getKey(item)}</span>)}</div>}
-      {phase === 'guesses' && backups.length > 0 && <div style={s.summaryBox}><div style={s.summaryLabel}>Your backups</div>{backups.map((item, i) => <span key={i} style={s.summaryChip('#f59e0b')}>{getKey(item)}</span>)}</div>}
-      <div style={s.progress}>{Array.from({length: phasePicker.limit}).map((_, i) => <div key={i} style={s.dot(i < phasePicker.count, cfg.accentColor)} />)}</div>
-      <div style={s.grid}>
-        {pool.map((item, i) => {
-          const sel = phasePicker.isSelected(item);
-          const taken = isCommitted(item, phase);
-          return (
-            <div key={i} style={s.item(sel, taken, cfg.accentBg, cfg.accentBorder)} onClick={() => phasePicker.toggle(item)}>
-              <div style={{fontSize:13, fontWeight:600, color: sel ? cfg.accentColor : (taken ? '#374151' : '#e2e8f0'), marginBottom:2}}>{sel ? '✓ ' : ''}{isArtistMode ? item.name : item.title}</div>
-              {!isArtistMode && <div style={{fontSize:12, color: sel ? '#94a3b8' : '#64748b'}}>{item.artist}</div>}
-            </div>
-          );
-        })}
+      <div style={s.sub}>Genre: {room.genre}{isSpotifyRoom ? ' · Spotify search enabled' : ''}</div>
+
+      {/* Step bar */}
+      <div style={{ display: 'flex', gap: 6, marginBottom: 14 }}>
+        {[0, 1, 2].map(i => (
+          <div key={i} style={{ flex: 1, height: 6, borderRadius: 3, border: '1px solid #334155', background: cfg.step > i + 1 ? '#475569' : (cfg.step === i + 1 ? stepColors[i] : '#1e293b') }} />
+        ))}
       </div>
-      <button style={s.btn(cfg.nextReady, cfg.accentColor)} onClick={cfg.onNext} disabled={!cfg.nextReady}>
-        {cfg.nextReady ? cfg.nextLabel : `Select ${phasePicker.limit - phasePicker.count} more`}
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+        <span style={{ fontSize: 16, fontWeight: 700, color: cfg.color }}>{cfg.label}</span>
+        <span style={{ fontSize: 12, color: '#64748b' }}>Step {cfg.step} of 3</span>
+      </div>
+
+      {phase === 'guesses' && (
+        <div style={{ display: 'flex', gap: 8, padding: '8px 12px', borderRadius: 8, background: '#1f0617', border: '1px solid #701a4e', marginBottom: 10 }}>
+          <span>🔒</span>
+          <span style={{ fontSize: 12, color: '#f9a8d4', lineHeight: 1.4 }}>Hidden from all other players until the end. Predict songs someone else picked.</span>
+        </div>
+      )}
+
+      {/* Summary of previous phases */}
+      {phase !== 'mains' && mains.length > 0 && (
+        <div style={s.summaryBox}>
+          <div style={s.summaryLabel}>Your mains</div>
+          {mains.map((item, i) => <span key={i} style={s.chip('#6366f1')}>{isArtistMode ? item.name : item.title}</span>)}
+        </div>
+      )}
+      {phase === 'guesses' && backups.length > 0 && (
+        <div style={s.summaryBox}>
+          <div style={s.summaryLabel}>Your backups</div>
+          {backups.map((item, i) => <span key={i} style={s.chip('#f59e0b')}>{isArtistMode ? item.name : item.title}</span>)}
+        </div>
+      )}
+
+      <ProgressDots count={cfg.selected.length} limit={cfg.limit} color={cfg.color} />
+      <SelectedChips picks={cfg.selected} pickMode={room.pickMode} onRemove={toggle} accentColor={cfg.color} limit={cfg.limit} />
+
+      <SearchPicker
+        roomCode={room.code}
+        pickMode={room.pickMode}
+        isSpotifyRoom={isSpotifyRoom}
+        pool={pool}
+        selected={cfg.selected}
+        onToggle={toggle}
+        limit={cfg.limit}
+        accentColor={cfg.color}
+        accentBg={cfg.bg}
+        disabledKeys={disabledKeys}
+      />
+
+      <button
+        style={s.btn(cfg.selected.length === cfg.limit, cfg.color)}
+        onClick={handleNext}
+        disabled={cfg.selected.length < cfg.limit}
+      >
+        {cfg.selected.length === cfg.limit ? cfg.nextLabel : `Select ${cfg.limit - cfg.selected.length} more`}
       </button>
     </div>
   );
@@ -112,167 +339,124 @@ function NewlywedPickScreen({ room }) {
 // ─── Gong Show ────────────────────────────────────────────────────────────────
 
 function GongShowPickScreen({ room }) {
-  const [phase, setPhase] = useState('mains'); // 'mains' | 'gongs'
+  const [phase, setPhase] = useState('mains');
   const [mains, setMains] = useState([]);
   const [gongs, setGongs] = useState([]);
   const isArtistMode = room.pickMode === 'artists';
+  const isSpotifyRoom = room.musicSource === 'spotify';
   const pool = isArtistMode ? (room.artistPool || []) : (room.songPool || []);
-  const getKey = (item) => isArtistMode ? item.name : item.title;
+  const getKey = (item) => isArtistMode ? (item.id || item.name) : (item.id || item.title);
 
   const mainKeys = new Set(mains.map(getKey));
   const gongKeys = new Set(gongs.map(getKey));
 
   const toggleMain = (item) => {
     const key = getKey(item);
-    if (gongKeys.has(key)) return; // can't pick as both
+    if (gongKeys.has(key)) return;
     if (mainKeys.has(key)) { setMains(mains.filter(p => getKey(p) !== key)); }
     else { if (mains.length >= 10) return; setMains([...mains, item]); }
   };
 
   const toggleGong = (item) => {
     const key = getKey(item);
-    if (mainKeys.has(key)) return; // can't gong your own main
+    if (mainKeys.has(key)) return;
     if (gongKeys.has(key)) { setGongs(gongs.filter(p => getKey(p) !== key)); }
     else { if (gongs.length >= 5) return; setGongs([...gongs, item]); }
   };
 
   const confirm = () => socket.emit('player:gongshow_picks', { mains, gongs });
-
-  const s = {
-    wrap: { maxWidth:700, margin:'0 auto', padding:16, paddingTop:20 },
-    title: { fontSize:22, fontWeight:700, color:'#f1f5f9', marginBottom:2 },
-    sub: { fontSize:13, color:'#64748b', marginBottom:12 },
-    stepBar: { display:'flex', gap:6, marginBottom:14 },
-    step: (active, done, color) => ({ flex:1, height:6, borderRadius:3, background: done ? '#475569' : (active ? color : '#1e293b'), border:'1px solid #334155' }),
-    phaseRow: { display:'flex', gap:8, marginBottom:14 },
-    phaseTab: (active, color) => ({ flex:1, padding:'10px 0', borderRadius:8, border:`1px solid ${active ? color : '#334155'}`, background: active ? color + '22' : '#0f172a', color: active ? color : '#64748b', fontWeight:700, fontSize:13, cursor:'pointer', textAlign:'center' }),
-    instruction: { fontSize:13, color:'#94a3b8', marginBottom:12, lineHeight:1.5, padding:'10px 12px', borderRadius:8, background:'#0f172a', border:'1px solid #334155' },
-    gongWarning: { display:'flex', gap:8, padding:'10px 12px', borderRadius:8, background:'#1f0a0a', border:'1px solid #7f1d1d', marginBottom:12 },
-    gongWarningText: { fontSize:12, color:'#fca5a5', lineHeight:1.4 },
-    progress: { display:'flex', gap:6, marginBottom:12 },
-    dot: (filled, color) => ({ width:24, height:8, borderRadius:4, background: filled ? color : '#1e293b', border:'1px solid #334155' }),
-    grid: { display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(180px, 1fr))', gap:8, marginBottom:16 },
-    item: (sel, disabled, bg, border) => ({ padding:'10px 12px', borderRadius:8, cursor: disabled ? 'not-allowed' : 'pointer', background: sel ? bg : (disabled ? '#111827' : '#1e293b'), border: sel ? `2px solid ${border}` : '1px solid #334155', opacity: disabled ? 0.35 : 1 }),
-    summaryBox: { background:'#0f172a', borderRadius:8, padding:'10px 14px', marginBottom:12, border:'1px solid #334155' },
-    summaryLabel: { fontSize:11, fontWeight:700, color:'#64748b', textTransform:'uppercase', marginBottom:6 },
-    summaryChip: (color) => ({ display:'inline-block', padding:'3px 10px', borderRadius:12, fontSize:12, background: color + '22', color, border:`1px solid ${color}66`, margin:'2px 3px' }),
-    btn: (ready, color) => ({ width:'100%', padding:'12px 20px', borderRadius:8, border:'none', cursor: ready ? 'pointer' : 'not-allowed', background: ready ? color : '#334155', color: ready ? '#fff' : '#64748b', fontWeight:700, fontSize:15 }),
-  };
-
-  const stepColors = ['#6366f1', '#ef4444'];
+  const s = sharedStyles();
+  const isMains = phase === 'mains';
+  const accentColor = isMains ? '#6366f1' : '#ef4444';
+  const accentBg = isMains ? '#312e81' : '#1f0a0a';
+  const currentPicks = isMains ? mains : gongs;
+  const currentToggle = isMains ? toggleMain : toggleGong;
+  const currentLimit = isMains ? 10 : 5;
+  const disabledKeys = isMains ? gongKeys : mainKeys;
+  const readyToConfirm = mains.length === 10 && gongs.length === 5;
 
   return (
     <div style={s.wrap}>
       <div style={s.title}>Gong Show Bingo — {isArtistMode ? 'Artist' : 'Song'} mode</div>
-      <div style={s.sub}>Genre: {room.genre}</div>
+      <div style={s.sub}>Genre: {room.genre}{isSpotifyRoom ? ' · Spotify search enabled' : ''}</div>
 
-      <div style={s.stepBar}>
-        {[0,1].map(i => <div key={i} style={s.step(phase === (i===0?'mains':'gongs'), phase === 'gongs' && i===0, stepColors[i])} />)}
-      </div>
-
-      <div style={s.phaseRow}>
-        <div style={s.phaseTab(phase === 'mains', '#6366f1')} onClick={() => setPhase('mains')}>🎵 Mains ({mains.length}/10)</div>
-        <div style={s.phaseTab(phase === 'gongs', '#ef4444')} onClick={() => mains.length > 0 && setPhase('gongs')}>🔔 Gongs ({gongs.length}/5)</div>
-      </div>
-
-      {phase === 'mains' && (
-        <>
-          <div style={s.instruction}>Pick 10 {isArtistMode ? 'artists' : 'songs'} you think will play. These score you points when played.</div>
-          <div style={s.progress}>{Array.from({length:10}).map((_,i) => <div key={i} style={s.dot(i < mains.length, '#6366f1')} />)}</div>
-          <div style={s.grid}>
-            {pool.map((item, i) => {
-              const key = getKey(item);
-              const sel = mainKeys.has(key);
-              const disabled = gongKeys.has(key);
-              return (
-                <div key={i} style={s.item(sel, disabled, '#312e81', '#6366f1')} onClick={() => toggleMain(item)}>
-                  <div style={{fontSize:13, fontWeight:600, color: sel ? '#a5b4fc' : (disabled ? '#374151' : '#e2e8f0'), marginBottom:2}}>{sel ? '✓ ' : ''}{isArtistMode ? item.name : item.title}</div>
-                  {!isArtistMode && <div style={{fontSize:12, color:'#64748b'}}>{item.artist}</div>}
-                </div>
-              );
-            })}
+      {/* Phase tabs */}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+        {[
+          { id: 'mains', label: `🎵 Mains (${mains.length}/10)`, color: '#6366f1' },
+          { id: 'gongs', label: `🔔 Gongs (${gongs.length}/5)`,  color: '#ef4444' },
+        ].map(tab => (
+          <div
+            key={tab.id}
+            style={{ flex: 1, padding: '10px 0', borderRadius: 8, border: `1px solid ${phase === tab.id ? tab.color : '#334155'}`, background: phase === tab.id ? tab.color + '22' : '#0f172a', color: phase === tab.id ? tab.color : '#64748b', fontWeight: 700, fontSize: 13, cursor: 'pointer', textAlign: 'center' }}
+            onClick={() => setPhase(tab.id)}
+          >
+            {tab.label}
           </div>
-          <button style={s.btn(mains.length === 10, '#6366f1')} onClick={() => setPhase('gongs')} disabled={mains.length < 10}>
-            {mains.length === 10 ? 'Next: Pick gong songs →' : `Select ${10 - mains.length} more mains`}
-          </button>
-        </>
-      )}
+        ))}
+      </div>
 
       {phase === 'gongs' && (
-        <>
-          <div style={s.instruction}>Pick 5 secret gong {isArtistMode ? 'artists' : 'songs'}. When a gonged song plays, any player who picked it as a main gets cancelled — no point. But if 2+ players gong the same song, it backfires and each gonger loses a point.</div>
-          <div style={s.gongWarning}><span>⚠️</span><span style={s.gongWarningText}>You cannot gong your own main picks. Choose wisely — duplicating another player's gong will cost you.</span></div>
+        <div style={{ display: 'flex', gap: 8, padding: '10px 12px', borderRadius: 8, background: '#1f0a0a', border: '1px solid #7f1d1d', marginBottom: 10 }}>
+          <span>⚠️</span>
+          <span style={{ fontSize: 12, color: '#fca5a5', lineHeight: 1.4 }}>You can't gong your own main picks. Two gongers on the same song cancel each other and both lose a point.</span>
+        </div>
+      )}
 
-          {mains.length > 0 && (
-            <div style={s.summaryBox}>
-              <div style={s.summaryLabel}>Your mains (locked)</div>
-              {mains.map((item, i) => <span key={i} style={s.summaryChip('#6366f1')}>{getKey(item)}</span>)}
-            </div>
-          )}
+      {phase === 'gongs' && mains.length > 0 && (
+        <div style={s.summaryBox}>
+          <div style={s.summaryLabel}>Your mains</div>
+          {mains.map((item, i) => <span key={i} style={s.chip('#6366f1')}>{isArtistMode ? item.name : item.title}</span>)}
+        </div>
+      )}
 
-          <div style={s.progress}>{Array.from({length:5}).map((_,i) => <div key={i} style={s.dot(i < gongs.length, '#ef4444')} />)}</div>
-          <div style={s.grid}>
-            {pool.map((item, i) => {
-              const key = getKey(item);
-              const sel = gongKeys.has(key);
-              const disabled = mainKeys.has(key); // can't gong your own mains
-              return (
-                <div key={i} style={s.item(sel, disabled, '#1f0a0a', '#ef4444')} onClick={() => toggleGong(item)}>
-                  <div style={{fontSize:13, fontWeight:600, color: sel ? '#f87171' : (disabled ? '#374151' : '#e2e8f0'), marginBottom:2}}>{sel ? '🔔 ' : ''}{isArtistMode ? item.name : item.title}</div>
-                  {!isArtistMode && <div style={{fontSize:12, color:'#64748b'}}>{item.artist}</div>}
-                  {disabled && <div style={{fontSize:11, color:'#4b5563', marginTop:2}}>Your main pick</div>}
-                </div>
-              );
-            })}
-          </div>
-          <button style={s.btn(gongs.length === 5, '#ef4444')} onClick={confirm} disabled={gongs.length < 5}>
-            {gongs.length === 5 ? 'Confirm all picks' : `Select ${5 - gongs.length} more gong songs`}
-          </button>
-        </>
+      <ProgressDots count={currentPicks.length} limit={currentLimit} color={accentColor} />
+      <SelectedChips picks={currentPicks} pickMode={room.pickMode} onRemove={currentToggle} accentColor={accentColor} limit={currentLimit} />
+
+      <SearchPicker
+        roomCode={room.code}
+        pickMode={room.pickMode}
+        isSpotifyRoom={isSpotifyRoom}
+        pool={pool}
+        selected={currentPicks}
+        onToggle={currentToggle}
+        limit={currentLimit}
+        accentColor={accentColor}
+        accentBg={accentBg}
+        disabledKeys={disabledKeys}
+      />
+
+      {phase === 'mains' && mains.length === 10 && (
+        <button style={{ ...s.btn(true, '#6366f1'), marginBottom: 8 }} onClick={() => setPhase('gongs')}>
+          Next: Pick gong songs →
+        </button>
+      )}
+      {phase === 'gongs' && (
+        <button style={s.btn(readyToConfirm, '#ef4444')} onClick={confirm} disabled={!readyToConfirm}>
+          {readyToConfirm ? 'Confirm all picks' : `Select ${5 - gongs.length} more gong${5 - gongs.length !== 1 ? 's' : ''}`}
+        </button>
       )}
     </div>
   );
 }
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+// ─── Shared styles ────────────────────────────────────────────────────────────
 
-function standardStyles() {
+function sharedStyles() {
   return {
-    wrap: { maxWidth:700, margin:'0 auto', padding:16, paddingTop:20 },
-    title: { fontSize:22, fontWeight:700, color:'#f1f5f9', marginBottom:4 },
-    sub: { fontSize:14, color:'#64748b', marginBottom:12 },
-    modeBadge: { display:'inline-block', padding:'3px 10px', borderRadius:20, fontSize:12, fontWeight:700, background:'#312e81', color:'#a5b4fc', border:'1px solid #6366f1', marginBottom:12 },
-    progress: { display:'flex', gap:8, margin:'12px 0' },
-    dot: (filled) => ({ width:32, height:8, borderRadius:4, background: filled ? '#6366f1' : '#1e293b', border:'1px solid #334155' }),
-    grid: { display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(200px, 1fr))', gap:8, marginBottom:20 },
-    item: (sel) => ({ padding:'12px 14px', borderRadius:8, cursor:'pointer', background: sel ? '#312e81' : '#1e293b', border: sel ? '2px solid #6366f1' : '1px solid #334155' }),
-    itemTitle: (sel) => ({ fontSize:13, fontWeight:600, color: sel ? '#a5b4fc' : '#e2e8f0', marginBottom:2 }),
-    itemSub: (sel) => ({ fontSize:12, color: sel ? '#818cf8' : '#64748b' }),
-    btn: (ready) => ({ width:'100%', padding:'12px 20px', borderRadius:8, border:'none', cursor: ready ? 'pointer' : 'not-allowed', background: ready ? '#6366f1' : '#334155', color: ready ? '#fff' : '#64748b', fontWeight:700, fontSize:15 }),
-  };
-}
-
-function newlywedStyles() {
-  return {
-    wrap: { maxWidth:700, margin:'0 auto', padding:16, paddingTop:20 },
-    title: { fontSize:22, fontWeight:700, color:'#f1f5f9', marginBottom:2 },
-    sub: { fontSize:13, color:'#64748b', marginBottom:12 },
-    stepBar: { display:'flex', gap:6, marginBottom:16 },
-    step: (active, done, color) => ({ flex:1, height:6, borderRadius:3, background: done ? '#475569' : (active ? color : '#1e293b'), border:'1px solid #334155' }),
-    phaseLabel: { display:'flex', alignItems:'center', gap:8, marginBottom:6 },
-    phaseName: { fontSize:16, fontWeight:700 },
-    phaseStep: { fontSize:12, color:'#64748b' },
-    instruction: { fontSize:13, color:'#94a3b8', marginBottom:12, lineHeight:1.5, padding:'10px 12px', borderRadius:8, background:'#0f172a', border:'1px solid #334155' },
-    secretNote: { display:'flex', alignItems:'center', gap:6, padding:'8px 12px', borderRadius:8, background:'#1f0617', border:'1px solid #701a4e', marginBottom:12 },
-    secretText: { fontSize:12, color:'#f9a8d4', lineHeight:1.4 },
-    progress: { display:'flex', gap:6, marginBottom:12 },
-    dot: (filled, color) => ({ width:28, height:8, borderRadius:4, background: filled ? color : '#1e293b', border:'1px solid #334155' }),
-    grid: { display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(200px, 1fr))', gap:8, marginBottom:20 },
-    item: (sel, taken, accentBg, accentBorder) => ({ padding:'12px 14px', borderRadius:8, cursor: taken ? 'not-allowed' : 'pointer', background: sel ? accentBg : (taken ? '#111827' : '#1e293b'), border: sel ? `2px solid ${accentBorder}` : '1px solid #334155', opacity: taken ? 0.4 : 1 }),
-    summaryBox: { background:'#0f172a', borderRadius:8, padding:'10px 14px', marginBottom:12, border:'1px solid #334155' },
-    summaryLabel: { fontSize:11, fontWeight:700, color:'#64748b', textTransform:'uppercase', marginBottom:6 },
-    summaryChip: (color) => ({ display:'inline-block', padding:'3px 10px', borderRadius:12, fontSize:12, background: color + '22', color, border:`1px solid ${color}66`, margin:'2px 3px' }),
-    btn: (ready, color) => ({ width:'100%', padding:'12px 20px', borderRadius:8, border:'none', cursor: ready ? 'pointer' : 'not-allowed', background: ready ? color : '#334155', color: ready ? '#fff' : '#64748b', fontWeight:700, fontSize:15 }),
+    wrap: { maxWidth: 700, margin: '0 auto', padding: 16, paddingTop: 20 },
+    title: { fontSize: 22, fontWeight: 700, color: '#f1f5f9', marginBottom: 2 },
+    sub: { fontSize: 13, color: '#64748b', marginBottom: 14 },
+    btn: (ready, color) => ({
+      width: '100%', padding: '12px 20px', borderRadius: 8, border: 'none',
+      cursor: ready ? 'pointer' : 'not-allowed',
+      background: ready ? color : '#334155',
+      color: ready ? '#fff' : '#64748b',
+      fontWeight: 700, fontSize: 15,
+    }),
+    summaryBox: { background: '#0f172a', borderRadius: 8, padding: '10px 14px', marginBottom: 10, border: '1px solid #334155' },
+    summaryLabel: { fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', marginBottom: 6 },
+    chip: (color) => ({ display: 'inline-block', padding: '3px 10px', borderRadius: 12, fontSize: 12, background: color + '22', color, border: `1px solid ${color}66`, margin: '2px 3px' }),
   };
 }
 

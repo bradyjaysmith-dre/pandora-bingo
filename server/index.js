@@ -112,6 +112,28 @@ app.get('/api/spotify/playlists', async (req, res) => {
   }
 });
 
+// Search endpoint — used during pick phase so players can search the Spotify catalog.
+// Requires the room code so the server can use the host's stored access token.
+app.get('/api/spotify/search', async (req, res) => {
+  const { q, type = 'track', room } = req.query;
+  if (!q || !q.trim()) return res.json([]);
+  // Get the host token for this room
+  const tokens = spotifyTokens.get(room);
+  if (!tokens) return res.status(401).json({ error: 'No Spotify token for this room' });
+  try {
+    if (type === 'artist') {
+      const results = await spotify.searchArtists(tokens.accessToken, q.trim());
+      res.json(results);
+    } else {
+      const results = await spotify.searchTracks(tokens.accessToken, q.trim());
+      res.json(results);
+    }
+  } catch (err) {
+    console.error('Spotify search error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── Static frontend (production) ─────────────────────────────────────────────
 // Serve the Vite build from client/dist. The SPA catch-all must come AFTER
 // all API routes so that /api/* and /auth/* are handled by Express first.
@@ -341,10 +363,12 @@ function startSpotifyPolling(roomCode) {
       if (!track || !track.isPlaying) return;
       io.to(roomCode).emit('spotify:now_playing', { track });
       console.log('Spotify track:', track.title, '|', track.artist, '| last:', lastTrackTitle);
-      if (track.title !== lastTrackTitle) {
-        lastTrackTitle = track.title;
+      // Detect track change by ID (most reliable) then fall back to title
+      const trackKey = track.id || track.title;
+      if (trackKey !== lastTrackTitle) {
+        lastTrackTitle = trackKey;
         console.log('New track detected:', track.title, '|', track.artist);
-        const result = game.playSong(roomCode, track.title, track.artist);
+        const result = game.playSong(roomCode, track.title, track.artist, track);
         if (!result.error && !result.alreadyPlayed) {
           broadcastSongResult(roomCode, result, track.title);
         }

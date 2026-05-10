@@ -156,30 +156,32 @@ function startCountdown(code) {
   return { room };
 }
 
+// Match a played song against a pick.
+// ID-based matching is preferred (Spotify IDs are exact and unambiguous).
+// Falls back to title/artist string matching for static pool picks and manual mode.
+function songMatchesPick(song, pick, pickMode) {
+  if (pickMode === 'artists') {
+    // ID match: song.artistIds is an array of Spotify artist IDs from now-playing
+    if (pick.id && song.artistIds && song.artistIds.length) {
+      return song.artistIds.includes(pick.id);
+    }
+    // String fallback
+    const pa = (song.artist || '').toLowerCase().split(/\s*[,&]\s*|\s+ft\.?\s+|\s+feat\.?\s+/).map(a => a.trim());
+    return pa.some(a => a === (pick.name || '').toLowerCase().trim());
+  }
+  // Track ID match
+  if (pick.id && song.id) return pick.id === song.id;
+  // String fallback
+  return song.title === pick.title;
+}
+
 function recalcScores(room) {
   room.players.forEach(p => {
     if (!p.confirmed) return;
-    if (room.pickMode === 'artists') {
-      p.score = p.picks.filter(pick =>
-        room.playedSongs.some(played => {
-          const pa = played.artist.toLowerCase().split(/\s*[,&]\s*|\s+ft\.?\s+|\s+feat\.?\s+/).map(a => a.trim());
-          return pa.some(a => a === pick.name.toLowerCase().trim());
-        })
-      ).length;
-    } else {
-      p.score = p.picks.filter(pick =>
-        room.playedSongs.some(played => played.title === pick.title)
-      ).length;
-    }
+    p.score = p.picks.filter(pick =>
+      room.playedSongs.some(played => songMatchesPick(played, pick, room.pickMode))
+    ).length;
   });
-}
-
-function songMatchesPick(song, pick, pickMode) {
-  if (pickMode === 'artists') {
-    const pa = song.artist.toLowerCase().split(/\s*[,&]\s*|\s+ft\.?\s+|\s+feat\.?\s+/).map(a => a.trim());
-    return pa.some(a => a === pick.name.toLowerCase().trim());
-  }
-  return song.title === pick.title;
 }
 
 function songInPlayerEight(song, player, pickMode) {
@@ -211,15 +213,28 @@ function calcNewlywedBackupDebtCleared(player, room) {
   ).length >= player.backupDebt;
 }
 
-function playSong(code, songTitle, songArtist) {
+// songData can be a full track object { id, title, artist, artistIds } from Spotify,
+// or just { title, artist } for manual mode / static pool fallback.
+function playSong(code, songTitle, songArtist, songData) {
   const room = getRoom(code);
   if (!room) return { error: 'Room not found' };
-  if (room.playedSongs.find(s => s.title === songTitle)) return { room, alreadyPlayed: true };
 
-  let song = room.songPool.find(s => s.title === songTitle);
-  if (!song) {
-    if (songArtist) song = { title: songTitle, artist: songArtist };
-    else return { error: 'Song not found' };
+  // Deduplicate: if we have an ID, check by ID; otherwise by title
+  const trackId = songData && songData.id;
+  if (trackId && room.playedSongs.find(s => s.id === trackId)) return { room, alreadyPlayed: true };
+  if (!trackId && room.playedSongs.find(s => s.title === songTitle)) return { room, alreadyPlayed: true };
+
+  let song;
+  if (songData && songData.id) {
+    // Full Spotify track object — use directly
+    song = songData;
+  } else {
+    // Try static pool first, then construct from args
+    song = room.songPool.find(s => s.title === songTitle);
+    if (!song) {
+      if (songArtist) song = { title: songTitle, artist: songArtist };
+      else return { error: 'Song not found' };
+    }
   }
   room.playedSongs.push(song);
 

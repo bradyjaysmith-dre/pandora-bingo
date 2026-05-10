@@ -48,13 +48,36 @@ async function getCurrentTrack(accessToken) {
   if (!data.body || !data.body.item) return null;
   const track = data.body.item;
   return {
+    id: track.id,
     title: track.name,
     artist: track.artists.map(a => a.name).join(', '),
+    artistIds: track.artists.map(a => a.id),
     albumArt: track.album.images[0] ? track.album.images[0].url : null,
     isPlaying: data.body.is_playing,
     progressMs: data.body.progress_ms,
     durationMs: track.duration_ms,
   };
+}
+
+async function searchTracks(accessToken, query) {
+  spotifyApi.setAccessToken(accessToken);
+  const data = await spotifyApi.searchTracks(query, { limit: 10 });
+  return (data.body.tracks.items || []).map(t => ({
+    id: t.id,
+    title: t.name,
+    artist: t.artists.map(a => a.name).join(', '),
+    albumArt: t.album.images[2] ? t.album.images[2].url : (t.album.images[0] ? t.album.images[0].url : null),
+  }));
+}
+
+async function searchArtists(accessToken, query) {
+  spotifyApi.setAccessToken(accessToken);
+  const data = await spotifyApi.searchArtists(query, { limit: 10 });
+  return (data.body.artists.items || []).map(a => ({
+    id: a.id,
+    name: a.name,
+    image: a.images[2] ? a.images[2].url : (a.images[0] ? a.images[0].url : null),
+  }));
 }
 
 async function getUserPlaylists(accessToken) {
@@ -78,4 +101,4 @@ async function getUserPlaylists(accessToken) {
 //   return { title: track.name, artist: track.artist['#text'] };
 // }
 
-module.exports = { getAuthUrl, handleCallback, refreshToken, getCurrentTrack, getUserPlaylists };
+module.exports = { getAuthUrl, handleCallback, refreshToken, getCurrentTrack, getUserPlaylists, searchTracks, searchArtists };
