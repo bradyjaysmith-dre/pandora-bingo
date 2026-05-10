@@ -20,7 +20,20 @@ A real-time multiplayer music prediction game. Pick songs or artists you think w
 
 ## Setup
 
-### Environment variables
+### 1. Clone the repo
+
+```bash
+git clone git@github.com:bradyjaysmith-dre/pandora-bingo.git
+cd pandora-bingo
+```
+
+### 2. Install dependencies
+
+```bash
+npm run install:all
+```
+
+### 3. Environment variables
 
 Create a file at `server/.env`:
 ```
@@ -31,13 +44,6 @@ PORT=3002
 ```
 
 Get credentials at https://developer.spotify.com/dashboard
-
-### Install dependencies
-
-```bash
-cd server && npm install
-cd ../client && npm install
-```
 
 ## Running the Game
 
@@ -77,6 +83,8 @@ The live deployment is at:
 ```
 https://23d8b6f8-954c-4117-8cf4-8adfbfbbaf8b-00-2vhdse288vm11.worf.replit.dev
 ```
+
+This URL is permanent for the current Repl. If you fork or recreate the Repl, update the URL here and in the Spotify Developer Dashboard redirect URI list.
 
 Secrets (Spotify credentials, PORT, SPOTIFY_REDIRECT_URI) are stored in Replit's Secrets manager. The Spotify redirect URI registered in the Spotify Developer Dashboard points to the Replit domain.
 
