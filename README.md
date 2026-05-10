@@ -1,5 +1,8 @@
 # Pandora Bingo
 
+> **v9.1.0** — Retro TV game show UI, synthesized sounds, localStorage reconnection, room code badge. ✅
+> **v9.0.0 milestone** — All three game modes fully functional. Spotify OAuth + live search + ID-based match detection. ✅
+
 A real-time multiplayer music prediction game. Pick songs or artists you think will play — first to match wins.
 
 ## How to Play
@@ -302,7 +305,7 @@ Future: Last.fm scrobbling support is planned as an alternative to Spotify for u
 
 **Blind mode is a room-level toggle, changeable mid-game** — The host can flip blind mode on or off from the Host Controls tab at any time during the game. This allows the host to reveal everyone's remaining hidden picks at a dramatic moment if desired.
 
-**Session storage for reconnection** — Player ID and room code are stored in session storage on join. On page reload, the client automatically emits a rejoin event and the server restores state from the existing player slot. If the session is cleared or expired, the player joins as a new participant.
+**localStorage for reconnection** — Player ID and room code are stored in localStorage on join. This survives tab close, browser restart, and accidental navigation — not just page reloads. On return, the client automatically emits a rejoin event and the server restores state from the existing player slot. If the stored session is expired or the room no longer exists, the player joins fresh as a new participant.
 
 **Spotify redirect preserves setup state** — Before redirecting to Spotify OAuth, the host's in-progress room settings are saved to session storage. On return from Spotify, the settings are restored and the user lands back on the host setup screen with everything pre-filled.
 
@@ -359,6 +362,7 @@ pandora-bingo/
 - v7-bugfixes-and-persistence — Spotify redirect fix, play again in same room, mid-game join, player reconnection with session persistence
 - v8-replit — Production build mode, Replit deployment, dynamic Spotify redirect URI, single-port Express serving, public URL with no Tailscale required
 - v9-live-search — Live Spotify search in pick phase: search-as-you-type against full Spotify catalog; picks store track/artist IDs; server match detection ID-first with string fallback; artist matching uses Spotify artist IDs from now-playing payload; album art thumbnails in search results and pick chips; static genre pool retained as fallback for manual-mode rooms
+- v9.1-ui-overhaul — Retro TV game show visual theme (muted neons, CRT scanline, stage curtains, Orbitron font, neon glow animations); Web Audio API synthesized sound effects (hit chime, gong hit, backfire buzz, wildcard sweep, penalty thud, win fanfare); room code corner badge on all in-game screens; localStorage reconnection (survives tab close/browser restart)
 
 **Upcoming**
 
