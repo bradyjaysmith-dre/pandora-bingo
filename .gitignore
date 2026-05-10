@@ -1,0 +1,30 @@
+# Environment variables - never commit these
+.env
+.env.*
+!.env.example
+server/.env
+client/server/.env
+
+# Dependencies
+node_modules/
+server/node_modules/
+client/node_modules/
+
+# Database files
+*.db
+*.db-shm
+*.db-wal
+
+# Build output
+client/dist/
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# PIDs
+*.pid

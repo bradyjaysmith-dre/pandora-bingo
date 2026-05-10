@@ -1,0 +1,11 @@
+{
+  "name": "pandora-bingo",
+  "version": "1.0.0",
+  "description": "Multiplayer music bingo game",
+  "scripts": {
+    "install:all": "cd server && npm install && cd ../client && npm install",
+    "build": "cd client && npm run build",
+    "start": "node server/index.js",
+    "dev": "bash start.sh"
+  }
+}

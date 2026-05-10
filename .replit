@@ -1,0 +1,18 @@
+run = "npm start"
+entrypoint = "server/index.js"
+
+[nix]
+channel = "stable-23_11"
+
+# On first deploy / after git clone, run this once in the Shell:
+#   npm run install:all && npm run build
+# After that, "Run" just does: npm start
+
+[deployment]
+run = ["sh", "-c", "npm start"]
+deploymentTarget = "cloudrun"
+build = ["sh", "-c", "npm run install:all && npm run build"]
+
+[[ports]]
+localPort = 3002
+externalPort = 80
