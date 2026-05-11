@@ -366,7 +366,7 @@ io.on('connection', (socket) => {
   socket.on('host:spotify_connect', async ({ accessToken, refreshToken }) => {
     const { roomCode } = socket.data;
     const key = roomCode || socket.id;
-    spotifyTokens.set(key, { accessToken, refreshToken, connectedAt: Date.now() });
+    spotifyTokens.set(key, { accessToken, refreshToken, connectedAt: Date.now(), expiresAt: Date.now() + 3600 * 1000 });
     socket.emit('spotify:connected');
     console.log('Spotify connected for', key);
   });
@@ -451,9 +451,25 @@ function startSpotifyPolling(roomCode) {
     const tokens = spotifyTokens.get(roomCode);
     if (!tokens) return;
     try {
+      // Auto-refresh token if it's close to expiry (tokens last 1 hour)
+      if (tokens.expiresAt && Date.now() > tokens.expiresAt - 60000) {
+        try {
+          const refreshed = await spotify.refreshToken(tokens.refreshToken);
+          tokens.accessToken = refreshed.accessToken;
+          tokens.expiresAt = Date.now() + refreshed.expiresIn * 1000;
+          spotifyTokens.set(roomCode, tokens);
+          console.log('Spotify token refreshed for room', roomCode);
+        } catch (refreshErr) {
+          console.error('Token refresh failed:', refreshErr.message);
+        }
+      }
       const track = await spotify.getCurrentTrack(tokens.accessToken);
-      if (!track || !track.isPlaying) return;
-      io.to(roomCode).emit('spotify:now_playing', { track });
+      // Accept track even if isPlaying is false — Spotify sometimes reports
+      // false during brief gaps or on mobile. We still want to register the song.
+      if (!track) return;
+      if (track.isPlaying) {
+        io.to(roomCode).emit('spotify:now_playing', { track });
+      }
       console.log('Spotify track:', track.title, '|', track.artist, '| last:', lastTrackTitle);
       // Detect track change by ID (most reliable) then fall back to title
       const trackKey = track.id || track.title;
