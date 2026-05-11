@@ -3,6 +3,10 @@
 .env.*
 !.env.example
 server/.env
+
+# Auto-generated runtime data
+server/leaderboard.json
+server/song-cache.json
 client/server/.env
 
 # Dependencies
