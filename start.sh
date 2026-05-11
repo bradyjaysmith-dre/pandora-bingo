@@ -1,14 +1,18 @@
 #!/bin/bash
 APP="Pandora Bingo"
 PID_FILE="/tmp/pandora.pid"
-SERVER_DIR="/home/bradysmith/pandora-bingo/server"
-CLIENT_DIR="/home/bradysmith/pandora-bingo/client"
+# Resolve script location so this works on both local and Replit
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SERVER_DIR="$SCRIPT_DIR/server"
+CLIENT_DIR="$SCRIPT_DIR/client"
 
 # Stop function
 stop() {
   if [ -f "$PID_FILE" ]; then
     echo "Stopping $APP..."
-    kill $(cat $PID_FILE) 2>/dev/null
+    for PID in $(cat $PID_FILE); do
+      kill $PID 2>/dev/null
+    done
     rm -f $PID_FILE
     echo "$APP stopped."
   else
@@ -38,20 +42,23 @@ node index.js &
 SERVER_PID=$!
 echo "  Backend running (PID $SERVER_PID) -> http://localhost:3002"
 
-sleep 1
-
-cd $CLIENT_DIR
-npm run dev &
-CLIENT_PID=$!
-echo "  Frontend running (PID $CLIENT_PID) -> http://localhost:5174"
-
-# Save both PIDs
-echo "$SERVER_PID $CLIENT_PID" > $PID_FILE
+# Only run Vite dev server if not on Replit (Replit serves from Express static)
+if [ -z "$REPL_ID" ] && [ -z "$REPLIT_CLUSTER" ]; then
+  sleep 1
+  cd $CLIENT_DIR
+  npm run dev &
+  CLIENT_PID=$!
+  echo "  Frontend running (PID $CLIENT_PID) -> http://localhost:5174"
+  echo "$SERVER_PID $CLIENT_PID" > $PID_FILE
+else
+  echo "  Replit detected: frontend served from Express static (client/dist)"
+  echo "$SERVER_PID" > $PID_FILE
+fi
 
 echo ""
 echo "  $APP started. PIDs saved to $PID_FILE"
 echo "  Run 'bash start.sh stop' to stop $APP"
-echo "  Press Ctrl+C to stop both servers"
+echo "  Press Ctrl+C to stop"
 
 # Trap Ctrl+C
 trap stop INT
