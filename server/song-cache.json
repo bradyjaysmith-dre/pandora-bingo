@@ -1,0 +1,359 @@
+{
+  "Rock": {
+    "songs": [
+      {
+        "title": "Sign of the Times",
+        "artist": "Harry Styles"
+      },
+      {
+        "title": "Lover, You Should've Come Over",
+        "artist": "Jeff Buckley"
+      },
+      {
+        "title": "The Chain - 2004 Remaster",
+        "artist": "Fleetwood Mac"
+      },
+      {
+        "title": "Still Into You",
+        "artist": "Paramore"
+      },
+      {
+        "title": "Everlong",
+        "artist": "Foo Fighters"
+      },
+      {
+        "title": "Iris",
+        "artist": "Goo Goo Dolls"
+      },
+      {
+        "title": "All I Wanted",
+        "artist": "Paramore"
+      },
+      {
+        "title": "Mr. Brightside",
+        "artist": "The Killers"
+      },
+      {
+        "title": "Scar Tissue",
+        "artist": "Red Hot Chili Peppers"
+      },
+      {
+        "title": "Bring Me to Life",
+        "artist": "Evanescence"
+      },
+      {
+        "title": "Can't Stop",
+        "artist": "Red Hot Chili Peppers"
+      },
+      {
+        "title": "Sparks",
+        "artist": "Coldplay"
+      },
+      {
+        "title": "In the End",
+        "artist": "Linkin Park"
+      },
+      {
+        "title": "Misery Business",
+        "artist": "Paramore"
+      },
+      {
+        "title": "Linger",
+        "artist": "The Cranberries"
+      },
+      {
+        "title": "Faint",
+        "artist": "Linkin Park"
+      },
+      {
+        "title": "Numb",
+        "artist": "Linkin Park"
+      },
+      {
+        "title": "How You Remind Me",
+        "artist": "Nickelback"
+      },
+      {
+        "title": "Sex on Fire",
+        "artist": "Kings of Leon"
+      },
+      {
+        "title": "Teenagers",
+        "artist": "My Chemical Romance"
+      },
+      {
+        "title": "Somewhere I Belong",
+        "artist": "Linkin Park"
+      },
+      {
+        "title": "Californication",
+        "artist": "Red Hot Chili Peppers"
+      },
+      {
+        "title": "Decode",
+        "artist": "Paramore"
+      },
+      {
+        "title": "Under the Bridge",
+        "artist": "Red Hot Chili Peppers"
+      },
+      {
+        "title": "Dirty Little Secret",
+        "artist": "The All-American Rejects"
+      },
+      {
+        "title": "It Ain't Over 'til It's Over",
+        "artist": "Lenny Kravitz"
+      },
+      {
+        "title": "Every Breath You Take",
+        "artist": "The Police"
+      },
+      {
+        "title": "Helena",
+        "artist": "My Chemical Romance"
+      },
+      {
+        "title": "Ain't It Fun",
+        "artist": "Paramore"
+      },
+      {
+        "title": "My Own Worst Enemy",
+        "artist": "Lit"
+      },
+      {
+        "title": "What I've Done",
+        "artist": "Linkin Park"
+      },
+      {
+        "title": "I Hate Everything About You",
+        "artist": "Three Days Grace"
+      },
+      {
+        "title": "Like a Stone",
+        "artist": "Audioslave"
+      },
+      {
+        "title": "Supermassive Black Hole",
+        "artist": "Muse"
+      },
+      {
+        "title": "Reptilia",
+        "artist": "The Strokes"
+      },
+      {
+        "title": "Teenage Dirtbag",
+        "artist": "Wheatus"
+      },
+      {
+        "title": "Somebody Told Me",
+        "artist": "The Killers"
+      },
+      {
+        "title": "Dreams - 2004 Remaster",
+        "artist": "Fleetwood Mac"
+      },
+      {
+        "title": "Smells Like Teen Spirit",
+        "artist": "Nirvana"
+      },
+      {
+        "title": "Otherside",
+        "artist": "Red Hot Chili Peppers"
+      },
+      {
+        "title": "Come as You Are",
+        "artist": "Nirvana"
+      },
+      {
+        "title": "Buddy Holly",
+        "artist": "Weezer"
+      },
+      {
+        "title": "Lonely Day",
+        "artist": "System of a Down"
+      },
+      {
+        "title": "Animal I Have Become",
+        "artist": "Three Days Grace"
+      },
+      {
+        "title": "Welcome to the Black Parade",
+        "artist": "My Chemical Romance"
+      },
+      {
+        "title": "brutal",
+        "artist": "Olivia Rodrigo"
+      },
+      {
+        "title": "No. 1 Party Anthem",
+        "artist": "Arctic Monkeys"
+      },
+      {
+        "title": "good 4 u",
+        "artist": "Olivia Rodrigo"
+      },
+      {
+        "title": "Livin' on a Prayer",
+        "artist": "Bon Jovi"
+      },
+      {
+        "title": "I Don't Love You",
+        "artist": "My Chemical Romance"
+      }
+    ],
+    "updatedAt": 1778483453533,
+    "artists": [
+      {
+        "name": "Radiohead"
+      },
+      {
+        "name": "Paramore"
+      },
+      {
+        "name": "Red Hot Chili Peppers"
+      },
+      {
+        "name": "Harry Styles"
+      },
+      {
+        "name": "Linkin Park"
+      },
+      {
+        "name": "Fleetwood Mac"
+      },
+      {
+        "name": "Coldplay"
+      },
+      {
+        "name": "My Chemical Romance"
+      },
+      {
+        "name": "Weezer"
+      },
+      {
+        "name": "Maroon 5"
+      },
+      {
+        "name": "The Beatles"
+      },
+      {
+        "name": "Queen"
+      },
+      {
+        "name": "The Cranberries"
+      },
+      {
+        "name": "Panic! at the Disco"
+      },
+      {
+        "name": "Foo Fighters"
+      },
+      {
+        "name": "David Bowie"
+      },
+      {
+        "name": "Nirvana"
+      },
+      {
+        "name": "The Police"
+      },
+      {
+        "name": "Evanescence"
+      },
+      {
+        "name": "Green Day"
+      },
+      {
+        "name": "Goo Goo Dolls"
+      },
+      {
+        "name": "Fall Out Boy"
+      },
+      {
+        "name": "Oasis"
+      },
+      {
+        "name": "Jeff Buckley"
+      },
+      {
+        "name": "Muse"
+      },
+      {
+        "name": "The Rolling Stones"
+      },
+      {
+        "name": "Måneskin"
+      },
+      {
+        "name": "Lenny Kravitz"
+      },
+      {
+        "name": "U2"
+      },
+      {
+        "name": "Nickelback"
+      },
+      {
+        "name": "Billy Idol"
+      },
+      {
+        "name": "The Cardigans"
+      },
+      {
+        "name": "Three Days Grace"
+      },
+      {
+        "name": "Bruce Springsteen"
+      },
+      {
+        "name": "Bon Jovi"
+      },
+      {
+        "name": "The Strokes"
+      },
+      {
+        "name": "The All-American Rejects"
+      },
+      {
+        "name": "Dire Straits"
+      },
+      {
+        "name": "Kings of Leon"
+      },
+      {
+        "name": "OneRepublic"
+      },
+      {
+        "name": "R.E.M."
+      },
+      {
+        "name": "Chris Isaak"
+      },
+      {
+        "name": "Guns N' Roses"
+      },
+      {
+        "name": "No Doubt"
+      },
+      {
+        "name": "Toto"
+      },
+      {
+        "name": "Charlie Brown Jr."
+      },
+      {
+        "name": "Crowded House"
+      },
+      {
+        "name": "Eagles"
+      },
+      {
+        "name": "Creed"
+      },
+      {
+        "name": "Pearl Jam"
+      }
+    ]
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "players": [
+    {
+      "name": "Brady",
+      "gamesPlayed": 1,
+      "songMatches": 0,
+      "artistMatches": 2,
+      "wins": 1
+    }
+  ]
+}

@@ -555,6 +555,23 @@ export default function GameScreen({ room, playerId, isHost, spotifyTokens, nowP
                   <div style={s.playedList}>{room.playedSongs.map((song,i) => <span key={i} style={s.playedChip}>{song.title} — {song.artist}</span>)}</div>
                 </div>
               )}
+              <details style={{marginTop:12}}>
+                <summary style={{fontSize:12,color:'#64748b',cursor:'pointer',userSelect:'none',marginBottom:8}}>
+                  ⚠️ Song not detected? Tap to mark manually
+                </summary>
+                <div style={{fontSize:12,color:'#475569',marginBottom:8}}>Use this if Spotify auto-detection misses a song (common on iOS).</div>
+                <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill, minmax(160px, 1fr))',gap:6}}>
+                  {(room.songPool||[]).map((song,i) => {
+                    const played = room.playedSongs.some(p => p.title === song.title);
+                    return (
+                      <div key={i} style={s.hostSong(played)} onClick={() => !played && socket.emit('host:play_song', { songTitle: song.title })}>
+                        <div style={{fontSize:12,fontWeight:600,color:played?'#93c5fd':'#e2e8f0',marginBottom:1}}>{played?'✓ ':''}{song.title}</div>
+                        <div style={{fontSize:11,color:'#64748b'}}>{song.artist}</div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </details>
             </>
           ) : (
             <>
