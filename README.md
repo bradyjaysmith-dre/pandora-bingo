@@ -1,5 +1,6 @@
 # Pandora Bingo
 
+> **v10.1.0** — iOS Spotify fix: manual song fallback in host tab, auto token refresh, relax isPlaying gate. ✅
 > **v10.0.0** — Solo mode, dynamic song pools (Last.fm), leaderboard, host force-start from waiting screen. ✅
 > **v9.1.0** — Retro TV game show UI, synthesized sounds, localStorage reconnection, room code badge. ✅
 > **v9.0.0** — All three game modes fully functional. Spotify OAuth + live search + ID-based match detection. ✅
@@ -282,7 +283,9 @@ Future: Last.fm scrobbling support is planned as an alternative to Spotify for u
 
 **Separate song and artist pools** — Artist mode uses a dedicated artist list rather than deriving artists from the song list. This prevents duplicates and gives each mode its own strategic pool.
 
-**Server-side Spotify polling** — The server handles all Spotify API calls rather than the client. This keeps the access token secure and ensures all players see consistent match detection regardless of their device.
+**Server-side Spotify polling** — The server handles all Spotify API calls rather than the client. This keeps the access token secure and ensures all players see consistent match detection regardless of their device. The access token is automatically refreshed before expiry (tokens last 1 hour) so long game sessions don't lose detection mid-game.
+
+**iOS Spotify detection caveat** — The Spotify Web API's currently-playing endpoint is unreliable when playback is on an iPhone (iOS app uses a local playback context the API can't always see). The server relaxes the `isPlaying` requirement and still processes tracks when the API returns the track data. If auto-detection still misses a song, the host has a manual fallback list in the Host Controls tab (collapsible, labeled "Song not detected?") — tap any song to mark it played.
 
 **Server-side Spotify search** — The `/api/spotify/search` endpoint proxies pick-phase search queries through the server using the room's stored host token. The client never holds or uses the Spotify access token directly.
 
@@ -375,6 +378,7 @@ pandora-bingo/
 - v8-replit — Production build mode, Replit deployment, dynamic Spotify redirect URI, single-port Express serving, public URL with no Tailscale required
 - v9-live-search — Live Spotify search in pick phase: search-as-you-type against full Spotify catalog; picks store track/artist IDs; server match detection ID-first with string fallback; artist matching uses Spotify artist IDs from now-playing payload; album art thumbnails in search results and pick chips; static genre pool retained as fallback for manual-mode rooms
 - v9.1-ui-overhaul — Retro TV game show visual theme (muted neons, CRT scanline, stage curtains, Orbitron font, neon glow animations); Web Audio API synthesized sound effects (hit chime, gong hit, backfire buzz, wildcard sweep, penalty thud, win fanfare); room code corner badge on all in-game screens; localStorage reconnection (survives tab close/browser restart)
+- v10.1-spotify-ios — Manual song fallback added to Spotify host tab (collapsible, clearly labeled as iOS workaround); Spotify access token auto-refreshes before expiry during polling; removed strict `isPlaying` gate that blocked detection during brief Spotify state gaps; `leaderboard.json` and `song-cache.json` added to `.gitignore` to prevent Replit merge conflicts
 - v10.0-platform — Solo mode (host plays alone, waiting screen skipped); dynamic song/artist pools fetched from Last.fm API with persistent disk cache and static fallback; persistent leaderboard tracking matches, wins, and games played per player (name-based, no passwords); name uniqueness enforced per room; host can force-start from the waiting screen after confirming their own picks; `start.sh` fixed to use relative paths and skip Vite dev server on Replit
 
 **Upcoming**
