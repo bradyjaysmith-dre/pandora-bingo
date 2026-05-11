@@ -462,9 +462,57 @@ function sharedStyles() {
 
 // ─── Router ───────────────────────────────────────────────────────────────────
 
-export default function PickScreen({ room, playerId }) {
+// ─── Host force-start banner ──────────────────────────────────────────────────
+function HostForceStartBanner({ room }) {
+  const unconfirmedCount = (room.players || []).filter(p => !p.confirmed).length;
+  if (unconfirmedCount === 0) return null;
+  return (
+    <div style={{ position:'fixed', bottom:20, left:'50%', transform:'translateX(-50%)', zIndex:200,
+      background:'#1a1a2e', border:'1px solid #ffb34788', borderRadius:12,
+      padding:'14px 20px', boxShadow:'0 0 20px rgba(255,179,71,0.3)', textAlign:'center', minWidth:280 }}>
+      <div style={{ fontSize:13, color:'#94a3b8', marginBottom:8 }}>
+        {unconfirmedCount} player{unconfirmedCount > 1 ? 's' : ''} still picking
+      </div>
+      <button
+        onClick={() => socket.emit('host:force_start')}
+        style={{ padding:'10px 24px', borderRadius:8, border:'1px solid #ffb347', cursor:'pointer',
+          background:'#2a1f0a', color:'#ffb347', fontWeight:700, fontSize:14,
+          fontFamily:"'Orbitron', monospace", letterSpacing:'0.05em' }}>
+        ▶ Start game anyway
+      </button>
+    </div>
+  );
+}
+
+// ─── Grace period countdown overlay ───────────────────────────────────────────
+function GraceOverlay({ seconds }) {
+  if (!seconds) return null;
+  return (
+    <div style={{ position:'fixed', top:0, left:0, right:0, bottom:0, zIndex:300,
+      background:'rgba(0,0,0,0.75)', display:'flex', alignItems:'center', justifyContent:'center' }}>
+      <div style={{ background:'#1a1a2e', border:'2px solid #ff6b9d', borderRadius:16,
+        padding:'32px 40px', textAlign:'center', boxShadow:'0 0 40px rgba(255,107,157,0.4)' }}>
+        <div style={{ fontSize:14, color:'#94a3b8', marginBottom:8, textTransform:'uppercase', letterSpacing:'0.1em' }}>Host started the game!</div>
+        <div style={{ fontFamily:"'Orbitron', monospace", fontSize:64, fontWeight:900,
+          color: seconds <= 10 ? '#ff6b9d' : '#ffb347',
+          textShadow:`0 0 20px ${seconds <= 10 ? 'rgba(255,107,157,0.8)' : 'rgba(255,179,71,0.8)'}`,
+          lineHeight:1 }}>{seconds}</div>
+        <div style={{ fontSize:13, color:'#64748b', marginTop:8 }}>seconds to finish picking</div>
+        <div style={{ fontSize:11, color:'#475569', marginTop:4 }}>Your current picks will be locked in automatically</div>
+      </div>
+    </div>
+  );
+}
+
+export default function PickScreen({ room, playerId, isHost, graceSecondsLeft }) {
   if (!room) return null;
-  if (room.gameMode === 'newlywed') return <NewlywedPickScreen room={room} playerId={playerId} />;
-  if (room.gameMode === 'gongshow') return <GongShowPickScreen room={room} playerId={playerId} />;
-  return <StandardPickScreen room={room} playerId={playerId} />;
+  return (
+    <>
+      {graceSecondsLeft && <GraceOverlay seconds={graceSecondsLeft} />}
+      {isHost && <HostForceStartBanner room={room} />}
+      {room.gameMode === 'newlywed' && <NewlywedPickScreen room={room} playerId={playerId} />}
+      {room.gameMode === 'gongshow' && <GongShowPickScreen room={room} playerId={playerId} />}
+      {room.gameMode !== 'newlywed' && room.gameMode !== 'gongshow' && <StandardPickScreen room={room} playerId={playerId} />}
+    </>
+  );
 }

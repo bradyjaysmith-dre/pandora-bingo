@@ -22,6 +22,7 @@ export default function App() {
   const [error, setError] = useState(null);
   const [spotifyTokens, setSpotifyTokens] = useState(null);
   const [nowPlaying, setNowPlaying] = useState(null);
+  const [graceSecondsLeft, setGraceSecondsLeft] = useState(null);
 
   const isSpotifyCallback = window.location.pathname === '/spotify-callback';
 
@@ -89,6 +90,16 @@ export default function App() {
     socket.on('spotify:connected', () => console.log('Spotify connected to server'));
     socket.on('spotify:now_playing', ({ track }) => setNowPlaying(track));
 
+    socket.on('game:grace_period', ({ seconds }) => {
+      setGraceSecondsLeft(seconds);
+      const interval = setInterval(() => {
+        setGraceSecondsLeft(prev => {
+          if (prev <= 1) { clearInterval(interval); return null; }
+          return prev - 1;
+        });
+      }, 1000);
+    });
+
     socket.on('game:over', ({ room }) => {
       setRoom({ ...room }); setNowPlaying(null); setScreen('end');
     });
@@ -142,7 +153,7 @@ export default function App() {
       )}
       {screen === 'home' && <HomeScreen spotifyConnected={!!spotifyTokens} />}
       {screen === 'lobby' && <LobbyScreen room={room} playerId={playerId} isHost={isHost} />}
-      {screen === 'pick' && <PickScreen room={room} playerId={playerId} />}
+      {screen === 'pick' && <PickScreen room={room} playerId={playerId} isHost={isHost} graceSecondsLeft={graceSecondsLeft} />}
       {screen === 'waiting' && (
         <div style={{ display:'flex', alignItems:'center', justifyContent:'center', minHeight:'100vh' }}>
           <div style={{ textAlign:'center' }}>

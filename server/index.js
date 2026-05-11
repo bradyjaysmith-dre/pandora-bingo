@@ -264,6 +264,33 @@ io.on('connection', (socket) => {
     }
   }
 
+  // ── Force-start with grace period ─────────────────────────────────────────
+  socket.on('host:force_start', () => {
+    const { roomCode, isHost } = socket.data;
+    if (!isHost) return;
+    const room = game.getRoom(roomCode);
+    if (!room || room.phase !== 'picking') return;
+
+    const GRACE_SECONDS = 30;
+
+    // Confirm all unconfirmed players with whatever picks they have so far
+    // (empty picks are fine — they just won't match anything)
+    room.players.forEach(p => { if (!p.confirmed) p.confirmed = true; });
+
+    // Start the game immediately
+    const startResult = game.startCountdown(roomCode);
+    if (startResult.error) { socket.emit('error', { message: startResult.error }); return; }
+
+    // Broadcast: game is live, but grace period is active for slow pickers
+    io.to(roomCode).emit('game:playing', { room: startResult.room });
+    io.to(roomCode).emit('game:grace_period', { seconds: GRACE_SECONDS });
+
+    scheduleTimer(roomCode);
+    if (startResult.room.musicSource === 'spotify' && spotifyTokens.has(roomCode)) {
+      startSpotifyPolling(roomCode);
+    }
+  });
+
   socket.on('host:countdown_done', () => {
     const { roomCode } = socket.data;
     const result = game.startCountdown(roomCode);
