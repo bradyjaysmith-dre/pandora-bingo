@@ -159,6 +159,16 @@ export default function App() {
           <div style={{ textAlign:'center' }}>
             <div style={{ fontFamily:"'Orbitron', monospace", fontSize:22, fontWeight:800, color:'#ffb347', textShadow:'0 0 12px rgba(255,179,71,0.6)', marginBottom:10 }}>Picks confirmed!</div>
             <div style={{ color:'rgba(0,212,255,0.7)', fontSize:14 }}>Waiting for other players...</div>
+            {isHost && (
+              <button
+                onClick={() => socket.emit('host:force_start')}
+                style={{ marginTop:28, padding:'12px 28px', borderRadius:8, border:'1px solid #ffb347',
+                  cursor:'pointer', background:'#2a1f0a', color:'#ffb347', fontWeight:700, fontSize:15,
+                  fontFamily:"'Orbitron', monospace", letterSpacing:'0.05em',
+                  boxShadow:'0 0 16px rgba(255,179,71,0.3)' }}>
+                &#9654; Start game now
+              </button>
+            )}
           </div>
         </div>
       )}
