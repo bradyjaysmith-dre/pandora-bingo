@@ -8,6 +8,8 @@ const { v4: uuidv4 } = require('uuid');
 const { getGenres, getSongPool, getArtistPool } = require('./songs');
 const game = require('./game');
 const spotify = require('./spotify');
+const lb = require('./leaderboard');
+const { getDynamicPool } = require('./dynamic-songs');
 
 const app = express();
 const PORT = process.env.PORT || 3002;
@@ -69,6 +71,10 @@ function getPublicBaseUrl(req) {
 // ── REST routes ──────────────────────────────────────────────────────────────
 
 app.get('/api/genres', (req, res) => res.json(getGenres()));
+
+app.get('/api/leaderboard', (req, res) => {
+  res.json(lb.getLeaderboard());
+});
 
 app.get('/api/songs/:genre', (req, res) => {
   const pool = getSongPool(req.params.genre);
@@ -178,6 +184,17 @@ io.on('connection', (socket) => {
     }
     socket.emit('room:created', { room, playerId: hostId });
     console.log('Room created:', room.code, 'by', hostName, 'mode:', gameMode, 'source:', musicSource);
+    // Register host in leaderboard
+    lb.getOrCreate(hostName);
+    // Kick off async dynamic pool refresh — silent fail
+    getDynamicPool(genre).then(({ songs, artists }) => {
+      const r = game.getRoom(room.code);
+      if (r) {
+        r.songPool   = songs;
+        r.artistPool = artists;
+        socket.emit('room:pool_updated', { songPool: songs, artistPool: artists });
+      }
+    }).catch(() => {});
   });
 
   // ── Reset room for new game ──────────────────────────────────────────────
@@ -188,11 +205,29 @@ io.on('connection', (socket) => {
     if (result.error) { socket.emit('error', { message: result.error }); return; }
     io.to(roomCode).emit('room:reset', { room: result.room });
     console.log('Room reset:', roomCode);
+    // Refresh dynamic pool for new genre
+    getDynamicPool(genre).then(({ songs, artists }) => {
+      const r = game.getRoom(roomCode);
+      if (r) {
+        r.songPool   = songs;
+        r.artistPool = artists;
+        socket.emit('room:pool_updated', { songPool: songs, artistPool: artists });
+      }
+    }).catch(() => {});
   });
 
   // ── Join ─────────────────────────────────────────────────────────────────
   socket.on('player:join', ({ playerName, roomCode }) => {
     const playerId = uuidv4();
+    // Check for duplicate name in this room
+    const existingRoom = game.getRoom(roomCode);
+    if (existingRoom) {
+      const nameTaken = existingRoom.players.some(p => p.name.toLowerCase() === playerName.toLowerCase());
+      if (nameTaken) {
+        socket.emit('error', { message: 'That name is already taken in this room. Pick a different one!' });
+        return;
+      }
+    }
     const result = game.joinRoom(roomCode, { playerId, playerName });
     if (result.error) { socket.emit('error', { message: result.error }); return; }
     socket.join(roomCode);
@@ -206,12 +241,25 @@ io.on('connection', (socket) => {
     if (room.phase === 'playing' && player && player.lateJoin) {
       socket.emit('game:picking', { room });
     }
+    // Register in leaderboard (no-op if already exists)
+    lb.getOrCreate(playerName);
     console.log(playerName, result.rejoined ? 'rejoined' : 'joined', roomCode);
   });
 
   // ── Start (move to pick phase) ───────────────────────────────────────────
   socket.on('host:start', () => {
     const { roomCode } = socket.data;
+    const result = game.startGame(roomCode);
+    if (result.error) { socket.emit('error', { message: result.error }); return; }
+    io.to(roomCode).emit('game:picking', { room: result.room });
+  });
+
+  // ── Solo start ───────────────────────────────────────────────────────────
+  socket.on('host:solo_start', () => {
+    const { roomCode } = socket.data;
+    const room = game.getRoom(roomCode);
+    if (!room) { socket.emit('error', { message: 'Room not found' }); return; }
+    room.soloMode = true;
     const result = game.startGame(roomCode);
     if (result.error) { socket.emit('error', { message: result.error }); return; }
     io.to(roomCode).emit('game:picking', { room: result.room });
@@ -252,7 +300,10 @@ io.on('connection', (socket) => {
     if (!room) return;
     if (room.phase === 'playing') return;
     if (room.phase !== 'picking') return;
-    const allConfirmed = room.players.every(p => p.confirmed);
+    // Solo mode: only one player needed; auto-start as soon as they confirm
+    const allConfirmed = room.soloMode
+      ? room.players.every(p => p.confirmed)
+      : room.players.every(p => p.confirmed);
     if (allConfirmed) {
       const startResult = game.startCountdown(roomCode);
       io.to(roomCode).emit('game:playing', { room: startResult.room });
@@ -348,6 +399,7 @@ io.on('connection', (socket) => {
     stopSpotifyPolling(roomCode);
     const result = game.endGame(roomCode);
     if (result.error) { socket.emit('error', { message: result.error }); return; }
+    recordLeaderboardResults(result.room);
     io.to(roomCode).emit('game:over', { room: result.room });
   });
 
@@ -363,6 +415,18 @@ io.on('connection', (socket) => {
   });
 });
 
+function recordLeaderboardResults(room) {
+  if (!room || !room.players) return;
+  room.players.forEach(p => {
+    if (!p.confirmed || !p.name) return;
+    lb.recordGameResult(p.name, {
+      matches:  p.score || 0,
+      won:      !!(room.winner && room.winner.id === p.id),
+      pickMode: room.pickMode || 'songs',
+    });
+  });
+}
+
 function broadcastSongResult(roomCode, result, songTitle) {
   io.to(roomCode).emit('game:updated', { room: result.room });
   if (result.newWildcards && result.newWildcards.length > 0) {
@@ -372,6 +436,7 @@ function broadcastSongResult(roomCode, result, songTitle) {
     io.to(roomCode).emit('game:gong_events', { events: result.gongEvents, song: songTitle });
   }
   if (result.winner) {
+    recordLeaderboardResults(result.room);
     io.to(roomCode).emit('game:over', { room: result.room });
   }
 }
@@ -429,6 +494,7 @@ function scheduleTimer(roomCode) {
       clearInterval(interval);
       stopSpotifyPolling(roomCode);
       const result = game.endGame(roomCode);
+      recordLeaderboardResults(result.room);
       io.to(roomCode).emit('game:over', { room: result.room });
     } else {
       io.to(roomCode).emit('game:tick', { secondsLeft: Math.ceil((r.endsAt - now) / 1000) });

@@ -22,6 +22,7 @@ export default function LobbyScreen({ room, playerId, isHost }) {
   if (!room) return null;
 
   const canStart = room.players.length >= 2;
+  const canSolo   = room.players.length === 1;
 
   const s = {
     wrap: { display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', padding: 16 },
@@ -109,6 +110,17 @@ export default function LobbyScreen({ room, playerId, isHost }) {
       fontWeight: 700, fontSize: 15,
       cursor: 'not-allowed',
     },
+    btnSolo: {
+      width: '100%', padding: '11px 20px', borderRadius: 8, marginTop: 10,
+      border: `1px solid ${C.amber}`,
+      cursor: 'pointer',
+      background: C.amberDim,
+      color: C.amber,
+      fontWeight: 700, fontSize: 13,
+      fontFamily: "'Orbitron', monospace",
+      letterSpacing: 1,
+      boxShadow: `0 0 8px rgba(255,179,71,0.15)`,
+    },
     waiting: { textAlign: 'center', color: C.muted, fontSize: 14, marginTop: 8 },
   };
 
@@ -142,13 +154,23 @@ export default function LobbyScreen({ room, playerId, isHost }) {
         </div>
 
         {isHost ? (
-          <button
-            style={canStart ? s.btn : s.btnDisabled}
-            onClick={() => socket.emit('host:start')}
-            disabled={!canStart}
-          >
-            {canStart ? 'Start Game' : 'Waiting for Players...'}
-          </button>
+          <>
+            <button
+              style={canStart ? s.btn : s.btnDisabled}
+              onClick={() => socket.emit('host:start')}
+              disabled={!canStart}
+            >
+              {canStart ? 'Start Game' : 'Waiting for Players...'}
+            </button>
+            {canSolo && (
+              <button
+                style={s.btnSolo}
+                onClick={() => socket.emit('host:solo_start')}
+              >
+                ⚡ Play Solo
+              </button>
+            )}
+          </>
         ) : (
           <div style={s.waiting}>Waiting for host to start the game...</div>
         )}

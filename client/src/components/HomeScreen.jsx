@@ -40,7 +40,7 @@ function StageCurtains() {
   );
 }
 
-export default function HomeScreen({ spotifyConnected }) {
+export default function HomeScreen({ spotifyConnected, onLeaderboard }) {
   const [mode, setMode] = useState('home');
   const [name, setName] = useState('');
   const [roomCode, setRoomCode] = useState('');
@@ -224,6 +224,12 @@ export default function HomeScreen({ spotifyConnected }) {
         <input style={s.input} value={name} onChange={e => setName(e.target.value)} placeholder="Enter your name" />
         <button style={s.btnPrimary} onClick={() => setMode('host')}>Host a Game</button>
         <button style={s.btnSecondary} onClick={() => setMode('join')}>Join a Game</button>
+        <button
+          style={{ ...s.btnSecondary, marginTop: 6, color: C.amber, borderColor: 'rgba(255,179,71,0.35)', fontSize: 13 }}
+          onClick={onLeaderboard}
+        >
+          🏆 Leaderboard
+        </button>
       </div>
     </div>
   );

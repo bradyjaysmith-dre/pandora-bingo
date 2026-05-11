@@ -7,6 +7,7 @@ import GameScreen from './components/GameScreen.jsx';
 import EndScreen from './components/EndScreen.jsx';
 import SpotifyCallback from './components/SpotifyCallback.jsx';
 import RoomCodeBadge from './components/RoomCodeBadge.jsx';
+import LeaderboardScreen from './components/LeaderboardScreen.jsx';
 
 const SESSION_KEY = 'pandora_session';
 
@@ -72,6 +73,10 @@ export default function App() {
     socket.on('game:picking', ({ room }) => {
       setRoom({ ...room });
       setScreen('pick');
+    });
+
+    socket.on('room:pool_updated', ({ songPool, artistPool }) => {
+      setRoom(prev => prev ? { ...prev, songPool, artistPool } : prev);
     });
 
     socket.on('picks:confirmed', () => setScreen('waiting'));
@@ -151,7 +156,8 @@ export default function App() {
           {error}
         </div>
       )}
-      {screen === 'home' && <HomeScreen spotifyConnected={!!spotifyTokens} />}
+      {screen === 'home' && <HomeScreen spotifyConnected={!!spotifyTokens} onLeaderboard={() => setScreen('leaderboard')} />}
+      {screen === 'leaderboard' && <LeaderboardScreen onBack={() => setScreen('home')} />}
       {screen === 'lobby' && <LobbyScreen room={room} playerId={playerId} isHost={isHost} />}
       {screen === 'pick' && <PickScreen room={room} playerId={playerId} isHost={isHost} graceSecondsLeft={graceSecondsLeft} />}
       {screen === 'waiting' && (
