@@ -1,7 +1,8 @@
 # Pandora Bingo
 
+> **v10.0.0** — Solo mode, dynamic song pools (Last.fm), leaderboard, host force-start from waiting screen. ✅
 > **v9.1.0** — Retro TV game show UI, synthesized sounds, localStorage reconnection, room code badge. ✅
-> **v9.0.0 milestone** — All three game modes fully functional. Spotify OAuth + live search + ID-based match detection. ✅
+> **v9.0.0** — All three game modes fully functional. Spotify OAuth + live search + ID-based match detection. ✅
 
 A real-time multiplayer music prediction game. Pick songs or artists you think will play — first to match wins.
 
@@ -293,6 +294,12 @@ Future: Last.fm scrobbling support is planned as an alternative to Spotify for u
 
 **No database** — Game state lives in server memory. Rooms are ephemeral — created and destroyed per session. Player slots within a room are preserved across disconnects for the life of the server process.
 
+**Leaderboard is name-based, no passwords** — Players are identified by their display name. If the same name is entered again in a future game, the server assumes it's the same person and accumulates their stats. Two players cannot share a name in the same room. This is intentionally simple — password auth is planned for a future milestone.
+
+**Dynamic pools with persistent cache** — On room creation the server fetches fresh top tracks/artists for the genre from the Last.fm API. Results are saved to `server/song-cache.json`. If the API is unreachable, the last saved list is used. If no cache exists yet, the hardcoded static pool in `songs.js` is the final fallback. The pool update is async — the static pool is shown immediately while the fetch runs, then the room pool is patched silently.
+
+**Solo mode skips the waiting screen** — When the host starts a solo game, the server sets a `soloMode` flag on the room. After the host confirms picks, the server immediately calls `startCountdown` and emits `game:playing`, bypassing the waiting-for-players phase entirely.
+
 **Newlywed guesses are server-only secrets** — Secret guess picks are stored on the server but never broadcast to other clients. Only the guessing player sees their own guesses on their card. Hits are computed server-side when a song plays.
 
 **Wildcard randomness is server-side** — The server selects a random unplayed song from the pool that the earner hasn't already picked. This keeps the assignment fair and consistent across all clients.
@@ -323,8 +330,12 @@ pandora-bingo/
                   includes /api/spotify/search proxy endpoint
     game.js       Room state, player management, scoring logic, all game modes;
                   ID-first match detection with string fallback
-    songs.js      Static song and artist pools by genre (50 each; fallback for manual mode)
-    spotify.js    Spotify OAuth, now-playing polling, searchTracks, searchArtists
+    songs.js           Static song and artist pools by genre (50 each; final fallback)
+    dynamic-songs.js   Last.fm API fetch with disk cache; falls back to cache then static
+    leaderboard.js     Persistent player stats (JSON file); name-based identity; win tracking
+    spotify.js         Spotify OAuth, now-playing polling, searchTracks, searchArtists
+    song-cache.json    Auto-generated; Last.fm pool cache per genre (not committed)
+    leaderboard.json   Auto-generated; persistent player stats (not committed)
     .env          Spotify credentials for local dev (not committed to git)
   client/
     src/
@@ -332,8 +343,9 @@ pandora-bingo/
       socket.js             Socket.io client
       index.css             Base styles
       components/
-        HomeScreen.jsx        Name entry, host setup, game mode + source selection
-        LobbyScreen.jsx       Room code, player list, start button
+        HomeScreen.jsx        Name entry, host setup, game mode + source selection; leaderboard link
+        LobbyScreen.jsx       Room code, player list, start + solo start buttons
+        LeaderboardScreen.jsx All-time player stats: matches, wins, games played
         PickScreen.jsx        Pick flows for all 3 modes; SearchPicker with live Spotify
                               search + static pool fallback; SelectedChips; ProgressDots
         GameScreen.jsx        Timer, card, scoreboard, host controls, event toasts;
@@ -363,6 +375,7 @@ pandora-bingo/
 - v8-replit — Production build mode, Replit deployment, dynamic Spotify redirect URI, single-port Express serving, public URL with no Tailscale required
 - v9-live-search — Live Spotify search in pick phase: search-as-you-type against full Spotify catalog; picks store track/artist IDs; server match detection ID-first with string fallback; artist matching uses Spotify artist IDs from now-playing payload; album art thumbnails in search results and pick chips; static genre pool retained as fallback for manual-mode rooms
 - v9.1-ui-overhaul — Retro TV game show visual theme (muted neons, CRT scanline, stage curtains, Orbitron font, neon glow animations); Web Audio API synthesized sound effects (hit chime, gong hit, backfire buzz, wildcard sweep, penalty thud, win fanfare); room code corner badge on all in-game screens; localStorage reconnection (survives tab close/browser restart)
+- v10.0-platform — Solo mode (host plays alone, waiting screen skipped); dynamic song/artist pools fetched from Last.fm API with persistent disk cache and static fallback; persistent leaderboard tracking matches, wins, and games played per player (name-based, no passwords); name uniqueness enforced per room; host can force-start from the waiting screen after confirming their own picks; `start.sh` fixed to use relative paths and skip Vite dev server on Replit
 
 **Upcoming**
 
@@ -377,5 +390,5 @@ Allow the host to play music from any app on their phone and have the game detec
 - Spotify playback control (play/pause/skip from within the game)
 - Pre-game countdown timer
 - Last.fm scrobbling as alternative music source
-- Game history and leaderboard
+- ~~Game history and leaderboard~~ ✅ done in v10.0
 - Mobile-optimized UI improvements
