@@ -1,5 +1,6 @@
 # Pandora Bingo
 
+> **v10.2.0** — Railway deployment: always-on hosting, no sleep timeouts, public URL on Railway infrastructure. ✅
 > **v10.1.0** — iOS Spotify fix: manual song fallback in host tab, auto token refresh, relax isPlaying gate. ✅
 > **v10.0.0** — Solo mode, dynamic song pools (Last.fm), leaderboard, host force-start from waiting screen. ✅
 > **v9.1.0** — Retro TV game show UI, synthesized sounds, localStorage reconnection, room code badge. ✅
@@ -80,36 +81,46 @@ See [REPLIT.md](./REPLIT.md) for full Replit deployment instructions.
 
 ## Deployment
 
-### Replit (live)
+### Railway (live — primary deployment)
 
-The project is deployed on Replit at a public URL — no Tailscale required. Anyone with the link can join a game from any device including mobile.
+The project is deployed on Railway at a public URL — no Tailscale required. Always-on hosting; no sleep timeouts.
 
 The live deployment is at:
+```
+https://pandora-bingo.up.railway.app
+```
+
+Environment variables (`SPOTIFY_CLIENT_ID`, `SPOTIFY_CLIENT_SECRET`, `SPOTIFY_REDIRECT_URI`, `NODE_ENV`) are set in Railway's Variables tab. The Spotify redirect URI registered in the Spotify Developer Dashboard is:
+```
+https://pandora-bingo.up.railway.app/auth/spotify/callback
+```
+
+#### Deploying updates
+
+Railway auto-deploys on every push to `main`:
+
+```bash
+git add .
+git commit -m "your message"
+git push
+```
+
+Railway will pick up the push, run the build command from `railway.json`, and redeploy automatically. No manual shell steps needed.
+
+#### Spotify host whitelist note
+
+The Spotify app is currently in **Development mode**, which limits OAuth access to whitelisted accounts. Only accounts explicitly added in the Spotify Developer Dashboard can authenticate as host. This is sufficient for private game nights. To open hosting to any Spotify user, submit the app for Spotify's Extended Quota review.
+
+### Replit (archived)
+
+The project was previously deployed on Replit. The Replit deployment is no longer the primary host. Railway replaced it due to Replit's free-tier sleep timeouts.
+
+Old Replit URL (no longer maintained):
 ```
 https://23d8b6f8-954c-4117-8cf4-8adfbfbbaf8b-00-2vhdse288vm11.worf.replit.dev
 ```
 
-This URL is permanent for the current Repl. If you fork or recreate the Repl, update the URL here and in the Spotify Developer Dashboard redirect URI list.
-
-Secrets (Spotify credentials, PORT, SPOTIFY_REDIRECT_URI) are stored in Replit's Secrets manager. The Spotify redirect URI registered in the Spotify Developer Dashboard points to the Replit domain.
-
-#### Deploying updates
-
-Development still happens locally. To push an update to the live Replit deployment:
-
-```bash
-# On your local machine
-git add .
-git commit -m "your message"
-git push
-
-# Then in the Replit Shell
-git pull && npm run build && npm start
-```
-
-#### Free tier note
-
-On Replit's free tier the server sleeps after ~5 minutes of inactivity. Keep a browser tab open on the app during game nights to prevent it from sleeping. For always-on hosting, Replit Deployments (paid) keeps the server running indefinitely.
+See [REPLIT.md](./REPLIT.md) if you need to redeploy there.
 
 ### How production mode works
 
@@ -273,6 +284,7 @@ The host authenticates via Spotify OAuth before creating a room. The server:
 The Spotify redirect URI is derived dynamically from the request host — no hardcoded URL. Register whichever URI matches your deployment in the Spotify Developer Dashboard:
 
 - **Local:** `http://127.0.0.1:3002/auth/spotify/callback`
+- **Railway:** `https://pandora-bingo.up.railway.app/auth/spotify/callback`
 - **Replit:** `https://<your-repl-url>/auth/spotify/callback`
 
 Host setup state (genre, mode, all settings) is saved to session storage before the OAuth redirect and restored automatically on return, so no settings are lost during authentication.
@@ -319,7 +331,7 @@ Future: Last.fm scrobbling support is planned as an alternative to Spotify for u
 
 **Spotify redirect preserves setup state** — Before redirecting to Spotify OAuth, the host's in-progress room settings are saved to session storage. On return from Spotify, the settings are restored and the user lands back on the host setup screen with everything pre-filled.
 
-**Dynamic Spotify redirect URI** — The server derives the OAuth callback URL from the incoming request host (`x-forwarded-host` → `host`). This means the same codebase works locally, on Tailscale, and on Replit without any code changes — only the registered Spotify redirect URI needs to match the deployment.
+**Dynamic Spotify redirect URI** — The server derives the OAuth callback URL from the incoming request host (`x-forwarded-host` → `host`). This means the same codebase works locally, on Tailscale, on Replit, and on Railway without any code changes — only the registered Spotify redirect URI needs to match the deployment.
 
 **Single-port production mode** — In production, Express serves the Vite-built frontend as static files from `client/dist`. The Socket.io path and all API routes share the same origin, eliminating CORS entirely. Local dev still uses the Vite dev server on 5174 for HMR.
 
@@ -378,6 +390,7 @@ pandora-bingo/
 - v8-replit — Production build mode, Replit deployment, dynamic Spotify redirect URI, single-port Express serving, public URL with no Tailscale required
 - v9-live-search — Live Spotify search in pick phase: search-as-you-type against full Spotify catalog; picks store track/artist IDs; server match detection ID-first with string fallback; artist matching uses Spotify artist IDs from now-playing payload; album art thumbnails in search results and pick chips; static genre pool retained as fallback for manual-mode rooms
 - v9.1-ui-overhaul — Retro TV game show visual theme (muted neons, CRT scanline, stage curtains, Orbitron font, neon glow animations); Web Audio API synthesized sound effects (hit chime, gong hit, backfire buzz, wildcard sweep, penalty thud, win fanfare); room code corner badge on all in-game screens; localStorage reconnection (survives tab close/browser restart)
+- v10.2-railway — Migrated primary deployment from Replit to Railway; always-on hosting with no sleep timeouts; auto-deploy on git push; `railway.json` added with build and start commands; `NODE_ENV=production` triggers production mode; Spotify redirect URI updated to Railway domain; confirmed working on Pop!_OS, Android, and iPhone
 - v10.1-spotify-ios — Manual song fallback added to Spotify host tab (collapsible, clearly labeled as iOS workaround); Spotify access token auto-refreshes before expiry during polling; removed strict `isPlaying` gate that blocked detection during brief Spotify state gaps; `leaderboard.json` and `song-cache.json` added to `.gitignore` to prevent Replit merge conflicts
 - v10.0-platform — Solo mode (host plays alone, waiting screen skipped); dynamic song/artist pools fetched from Last.fm API with persistent disk cache and static fallback; persistent leaderboard tracking matches, wins, and games played per player (name-based, no passwords); name uniqueness enforced per room; host can force-start from the waiting screen after confirming their own picks; `start.sh` fixed to use relative paths and skip Vite dev server on Replit
 
