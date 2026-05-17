@@ -31,7 +31,19 @@ export default function App() {
     if (isSpotifyCallback) return;
     socket.connect();
 
-    // ── Try to rejoin from saved session ──────────────────────────────────
+    // ── Reconnect handler ─────────────────────────────────────────────────
+    // When the socket reconnects (e.g. after mobile browser suspension),
+    // it gets a new socket ID and is no longer in the room's broadcast channel.
+    // Re-emit player:rejoin so the server puts it back in the room.
+    socket.on('connect', () => {
+      const session = loadSession();
+      if (session && session.roomCode && session.playerId) {
+        console.log('Socket reconnected — rejoining room', session.roomCode);
+        socket.emit('player:rejoin', { roomCode: session.roomCode, playerId: session.playerId });
+      }
+    });
+
+    // ── Try to rejoin from saved session on first load ────────────────────
     const session = loadSession();
     if (session && session.roomCode && session.playerId) {
       socket.emit('player:rejoin', { roomCode: session.roomCode, playerId: session.playerId });
@@ -40,7 +52,6 @@ export default function App() {
     socket.on('room:rejoined', ({ room, playerId }) => {
       setRoom(room); setPlayerId(playerId);
       setIsHost(room.hostId === playerId);
-      // Restore to the right screen based on room phase
       if (room.phase === 'lobby') setScreen('lobby');
       else if (room.phase === 'picking') {
         const me = room.players.find(p => p.id === playerId);
@@ -61,7 +72,6 @@ export default function App() {
       saveSession({ roomCode: room.code, playerId, playerName: me ? me.name : '' });
     });
 
-    // Host reset — everyone goes back to lobby with new settings
     socket.on('room:reset', ({ room }) => {
       setRoom({ ...room });
       setNowPlaying(null);
@@ -118,8 +128,6 @@ export default function App() {
 
   const handleSpotifyConnected = (tokens) => {
     setSpotifyTokens(tokens);
-    // Socket wasn't connected during the OAuth callback page — connect now,
-    // then emit once the connection is established.
     if (!socket.connected) {
       socket.connect();
       socket.once('connect', () => socket.emit('host:spotify_connect', tokens));
@@ -130,13 +138,10 @@ export default function App() {
     setScreen('home');
   };
 
-  // Host resets the room for a new game with updated settings
   const handlePlayAgain = (settings) => {
     if (isHost) {
       socket.emit('host:reset', settings);
-      // room:reset event will move everyone to lobby
     }
-    // Non-hosts just wait for the room:reset event
   };
 
   const goHome = () => {
