@@ -6,7 +6,7 @@ export default function EndScreen({ room, playerId, isHost, onPlayAgain, onLeave
   const [genre, setGenre] = useState(room ? room.genre : '');
   const [matchTarget, setMatchTarget] = useState(room ? room.matchTarget : 5);
   const [timeLimit, setTimeLimit] = useState(room ? room.timeLimit : 15);
-  const [pickMode, setPickMode] = useState(room ? room.pickMode : 'songs');
+  const [pickMode, setPickMode] = useState(room ? room.pickMode : 'artists');
   const [musicSource, setMusicSource] = useState(room ? room.musicSource : 'manual');
   const [gameMode, setGameMode] = useState(room ? room.gameMode : 'standard');
   const [blindMode, setBlindMode] = useState(room ? room.blindMode : false);

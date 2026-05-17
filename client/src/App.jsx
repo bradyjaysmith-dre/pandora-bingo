@@ -15,6 +15,16 @@ function saveSession(data) { localStorage.setItem(SESSION_KEY, JSON.stringify(da
 function loadSession() { try { return JSON.parse(localStorage.getItem(SESSION_KEY)); } catch { return null; } }
 function clearSession() { localStorage.removeItem(SESSION_KEY); }
 
+// Screens that get a history entry pushed when navigated to.
+// The value is what screen to go back to when back is pressed.
+const BACK_MAP = {
+  leaderboard: 'home',
+  lobby:       'home',
+  pick:        'lobby',
+  waiting:     'lobby',
+  // 'game' and 'end' are handled specially (modal / home)
+};
+
 export default function App() {
   const [screen, setScreen] = useState('home');
   const [room, setRoom] = useState(null);
@@ -24,17 +34,66 @@ export default function App() {
   const [spotifyTokens, setSpotifyTokens] = useState(null);
   const [nowPlaying, setNowPlaying] = useState(null);
   const [graceSecondsLeft, setGraceSecondsLeft] = useState(null);
+  const [leaveModal, setLeaveModal] = useState(false); // shown when back pressed in-game
 
   const isSpotifyCallback = window.location.pathname === '/spotify-callback';
+
+  // Push a history entry whenever we navigate to a new screen so the browser
+  // back button has something to intercept.
+  const navigateTo = (newScreen) => {
+    if (newScreen === 'home') {
+      // Replace so we don't accumulate home entries
+      window.history.replaceState({ screen: 'home' }, '');
+    } else {
+      window.history.pushState({ screen: newScreen }, '');
+    }
+    setScreen(newScreen);
+  };
+
+  // Intercept browser back button
+  useEffect(() => {
+    const handlePopState = (e) => {
+      const target = e.state?.screen ?? 'home';
+
+      // In-game: show modal instead of navigating away
+      if (screen === 'game') {
+        // Push the state back so the browser history isn't consumed
+        window.history.pushState({ screen: 'game' }, '');
+        setLeaveModal(true);
+        return;
+      }
+
+      // End screen: just go home
+      if (screen === 'end') {
+        goHome();
+        return;
+      }
+
+      // All other screens: navigate to the target from BACK_MAP
+      const backScreen = BACK_MAP[screen] ?? 'home';
+      if (backScreen === 'home') {
+        goHome();
+      } else {
+        setScreen(backScreen);
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, [screen]);
+
+  // Seed the initial history state so popstate has a state object to read
+  useEffect(() => {
+    if (!isSpotifyCallback) {
+      window.history.replaceState({ screen: 'home' }, '');
+    }
+  }, []);
 
   useEffect(() => {
     if (isSpotifyCallback) return;
     socket.connect();
 
     // ── Reconnect handler ─────────────────────────────────────────────────
-    // When the socket reconnects (e.g. after mobile browser suspension),
-    // it gets a new socket ID and is no longer in the room's broadcast channel.
-    // Re-emit player:rejoin so the server puts it back in the room.
     socket.on('connect', () => {
       const session = loadSession();
       if (session && session.roomCode && session.playerId) {
@@ -52,22 +111,24 @@ export default function App() {
     socket.on('room:rejoined', ({ room, playerId }) => {
       setRoom(room); setPlayerId(playerId);
       setIsHost(room.hostId === playerId);
-      if (room.phase === 'lobby') setScreen('lobby');
+      if (room.phase === 'lobby') navigateTo('lobby');
       else if (room.phase === 'picking') {
         const me = room.players.find(p => p.id === playerId);
-        setScreen(me && me.confirmed ? 'waiting' : 'pick');
+        navigateTo(me && me.confirmed ? 'waiting' : 'pick');
       }
-      else if (room.phase === 'playing') setScreen('game');
-      else if (room.phase === 'ended') setScreen('end');
+      else if (room.phase === 'playing') navigateTo('game');
+      else if (room.phase === 'ended') navigateTo('end');
     });
 
     socket.on('room:created', ({ room, playerId }) => {
-      setRoom(room); setPlayerId(playerId); setIsHost(true); setScreen('lobby');
+      setRoom(room); setPlayerId(playerId); setIsHost(true);
+      navigateTo('lobby');
       saveSession({ roomCode: room.code, playerId, playerName: room.players[0].name });
     });
 
     socket.on('room:joined', ({ room, playerId }) => {
-      setRoom(room); setPlayerId(playerId); setIsHost(false); setScreen('lobby');
+      setRoom(room); setPlayerId(playerId); setIsHost(false);
+      navigateTo('lobby');
       const me = room.players.find(p => p.id === playerId);
       saveSession({ roomCode: room.code, playerId, playerName: me ? me.name : '' });
     });
@@ -75,25 +136,25 @@ export default function App() {
     socket.on('room:reset', ({ room }) => {
       setRoom({ ...room });
       setNowPlaying(null);
-      setScreen('lobby');
+      navigateTo('lobby');
     });
 
     socket.on('lobby:updated', ({ room }) => setRoom({ ...room }));
 
     socket.on('game:picking', ({ room }) => {
       setRoom({ ...room });
-      setScreen('pick');
+      navigateTo('pick');
     });
 
     socket.on('room:pool_updated', ({ songPool, artistPool }) => {
       setRoom(prev => prev ? { ...prev, songPool, artistPool } : prev);
     });
 
-    socket.on('picks:confirmed', () => setScreen('waiting'));
+    socket.on('picks:confirmed', () => navigateTo('waiting'));
 
     socket.on('game:playing', ({ room }) => {
       setRoom({ ...room });
-      setScreen('game');
+      navigateTo('game');
     });
 
     socket.on('game:updated', ({ room }) => setRoom({ ...room }));
@@ -116,7 +177,8 @@ export default function App() {
     });
 
     socket.on('game:over', ({ room }) => {
-      setRoom({ ...room }); setNowPlaying(null); setScreen('end');
+      setRoom({ ...room }); setNowPlaying(null);
+      navigateTo('end');
     });
 
     socket.on('error', ({ message }) => {
@@ -139,30 +201,105 @@ export default function App() {
   };
 
   const handlePlayAgain = (settings) => {
-    if (isHost) {
-      socket.emit('host:reset', settings);
-    }
+    if (isHost) socket.emit('host:reset', settings);
   };
 
   const goHome = () => {
     clearSession();
     setScreen('home'); setRoom(null); setPlayerId(null);
     setIsHost(false); setNowPlaying(null); setSpotifyTokens(null);
+    window.history.replaceState({ screen: 'home' }, '');
+  };
+
+  // Leave game confirmed from modal
+  const confirmLeave = () => {
+    setLeaveModal(false);
+    goHome();
   };
 
   if (isSpotifyCallback) {
     return <SpotifyCallback onConnected={handleSpotifyConnected} />;
   }
 
+  // ── In-game leave modal ────────────────────────────────────────────────────
+  const LeaveModal = () => {
+    const GC = {
+      bg: '#1a1a2e', panel: '#12122a', border: '#2a2a4a',
+      cyan: '#00d4ff', amber: '#ffb347', red: '#f87171',
+      text: '#e2e8f0', muted: '#6b7280',
+    };
+    return (
+      <div style={{
+        position: 'fixed', inset: 0, zIndex: 2000,
+        background: 'rgba(0,0,0,0.75)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        padding: 24,
+      }}>
+        <div style={{
+          background: GC.panel, border: `1px solid ${GC.border}`,
+          borderRadius: 14, padding: 28, maxWidth: 380, width: '100%',
+          boxShadow: '0 0 40px rgba(0,0,0,0.8)',
+        }}>
+          <div style={{
+            fontFamily: "'Orbitron', monospace", fontSize: 17, fontWeight: 800,
+            color: GC.amber, marginBottom: 12,
+            textShadow: '0 0 10px rgba(255,179,71,0.5)',
+          }}>
+            {isHost ? '⚠️ You are the host' : '⚠️ Leave game?'}
+          </div>
+          <div style={{ fontSize: 14, color: GC.text, marginBottom: 8, lineHeight: 1.6 }}>
+            {isHost
+              ? 'Leaving as the host will end the game for all players. Are you sure?'
+              : 'Are you sure you want to leave? You can rejoin anytime using the same room code.'}
+          </div>
+          {!isHost && room && (
+            <div style={{
+              fontSize: 13, color: GC.cyan, marginBottom: 16,
+              fontFamily: "'Orbitron', monospace", letterSpacing: 2,
+            }}>
+              Room code: {room.code}
+            </div>
+          )}
+          <div style={{ display: 'flex', gap: 10, marginTop: 20 }}>
+            <button
+              onClick={() => setLeaveModal(false)}
+              style={{
+                flex: 1, padding: '11px 0', borderRadius: 8,
+                border: `1px solid ${GC.border}`, background: 'transparent',
+                color: GC.muted, cursor: 'pointer', fontWeight: 600, fontSize: 14,
+              }}
+            >
+              Stay in game
+            </button>
+            <button
+              onClick={confirmLeave}
+              style={{
+                flex: 1, padding: '11px 0', borderRadius: 8,
+                border: `1px solid rgba(248,113,113,0.4)`,
+                background: 'rgba(248,113,113,0.1)',
+                color: GC.red, cursor: 'pointer', fontWeight: 700, fontSize: 14,
+                boxShadow: '0 0 8px rgba(248,113,113,0.15)',
+              }}
+            >
+              {isHost ? 'End game & leave' : 'Leave game'}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div style={{ minHeight: '100vh', background: '#1a1a2e' }}>
+      {leaveModal && <LeaveModal />}
+
       {error && (
         <div style={{ position:'fixed', top:16, left:'50%', transform:'translateX(-50%)', background:'rgba(26,26,46,0.95)', color:'#f87171', padding:'10px 20px', borderRadius:8, zIndex:1000, fontSize:14, border:'1px solid rgba(248,113,113,0.4)', boxShadow:'0 0 12px rgba(248,113,113,0.2)' }}>
           {error}
         </div>
       )}
-      {screen === 'home' && <HomeScreen spotifyConnected={!!spotifyTokens} onLeaderboard={() => setScreen('leaderboard')} />}
-      {screen === 'leaderboard' && <LeaderboardScreen onBack={() => setScreen('home')} />}
+      {screen === 'home' && <HomeScreen spotifyConnected={!!spotifyTokens} onLeaderboard={() => navigateTo('leaderboard')} />}
+      {screen === 'leaderboard' && <LeaderboardScreen onBack={() => navigateTo('home')} />}
       {screen === 'lobby' && <LobbyScreen room={room} playerId={playerId} isHost={isHost} />}
       {screen === 'pick' && <PickScreen room={room} playerId={playerId} isHost={isHost} graceSecondsLeft={graceSecondsLeft} />}
       {screen === 'waiting' && (

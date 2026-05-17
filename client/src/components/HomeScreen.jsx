@@ -47,7 +47,7 @@ export default function HomeScreen({ spotifyConnected, onLeaderboard }) {
   const [genre, setGenre] = useState('');
   const [matchTarget, setMatchTarget] = useState(5);
   const [timeLimit, setTimeLimit] = useState(15);
-  const [pickMode, setPickMode] = useState('songs');
+  const [pickMode, setPickMode] = useState('artists');
   const [musicSource, setMusicSource] = useState('manual');
   const [gameMode, setGameMode] = useState('standard');
   const [blindMode, setBlindMode] = useState(false);
