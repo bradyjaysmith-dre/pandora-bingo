@@ -295,9 +295,29 @@ export default function GameScreen({ room, playerId, isHost, spotifyTokens, nowP
   const [auddLastResult, setAuddLastResult] = useState(null); // { title, artist } | null
   const [auddError, setAuddError] = useState('');
   const [auddLog, setAuddLog] = useState([]); // array of { title, artist } — detected songs this session
+  const [audioDevices, setAudioDevices] = useState([]); // available audio input devices
+  const [selectedDeviceId, setSelectedDeviceId] = useState(''); // '' = browser default
   const auddStreamRef = useRef(null);
   const auddLoopRef = useRef(null);
   const auddActiveRef = useRef(false);
+
+  // Enumerate audio input devices. Called on mount and again after first permission grant
+  // (browser only exposes device labels after permission is granted).
+  const refreshAudioDevices = useCallback(async () => {
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const inputs = devices.filter(d => d.kind === 'audioinput');
+      setAudioDevices(inputs);
+      // If nothing is selected yet and we have devices, keep '' (browser default)
+    } catch (e) {
+      // enumerateDevices not available — no selector shown
+    }
+  }, []);
+
+  // Enumerate on mount so we at least get device IDs (labels need permission first)
+  useEffect(() => {
+    if (isAuddMode && isHost) refreshAudioDevices();
+  }, [isAuddMode, isHost, refreshAudioDevices]);
 
   const isAuddMode = room && room.musicSource === 'audd';
 
@@ -374,10 +394,26 @@ export default function GameScreen({ room, playerId, isHost, spotifyTokens, nowP
     setAuddStatus('requesting');
     setAuddError('');
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+      const audioConstraints = selectedDeviceId
+        ? {
+            deviceId: { exact: selectedDeviceId },
+            echoCancellation: false,
+            noiseSuppression: false,
+            autoGainControl: false,
+            channelCount: 1,
+          }
+        : {
+            echoCancellation: false,
+            noiseSuppression: false,
+            autoGainControl: false,
+            channelCount: 1,
+          };
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints, video: false });
       auddStreamRef.current = stream;
       auddActiveRef.current = true;
       setAuddStatus('listening');
+      // Re-enumerate now that permission is granted — labels will be populated
+      refreshAudioDevices();
 
       // Run immediately, then every 10 seconds
       captureAndIdentify();
@@ -386,11 +422,13 @@ export default function GameScreen({ room, playerId, isHost, spotifyTokens, nowP
       setAuddStatus('error');
       if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
         setAuddError('Microphone permission denied. Please allow mic access and refresh.');
+      } else if (err.name === 'OverconstrainedError') {
+        setAuddError('Selected device not available. Choose a different input and try again.');
       } else {
-        setAuddError('Could not access microphone: ' + err.message);
+        setAuddError('Could not access audio input: ' + err.message);
       }
     }
-  }, [captureAndIdentify]);
+  }, [captureAndIdentify, refreshAudioDevices, selectedDeviceId]);
 
   // Stop mic stream + polling loop
   const stopAuddListening = useCallback(() => {
@@ -705,6 +743,40 @@ export default function GameScreen({ room, playerId, isHost, spotifyTokens, nowP
             </>
           ) : isAuddMode ? (
             <>
+              {/* ── Audio input device selector ── */}
+              {audioDevices.length > 0 && (auddStatus === 'idle' || auddStatus === 'error') && (
+                <div style={{marginBottom:10}}>
+                  <div style={{fontSize:11,fontWeight:700,color:GC.muted,textTransform:'uppercase',letterSpacing:'0.07em',marginBottom:6}}>
+                    Audio input source
+                  </div>
+                  <select
+                    value={selectedDeviceId}
+                    onChange={e => setSelectedDeviceId(e.target.value)}
+                    style={{
+                      width:'100%', padding:'8px 10px', borderRadius:8,
+                      background:GC.alt, color:GC.text,
+                      border:`1px solid ${GC.border}`, fontSize:13,
+                      cursor:'pointer', outline:'none',
+                    }}
+                  >
+                    <option value="">Default microphone</option>
+                    {audioDevices.map(d => (
+                      <option key={d.deviceId} value={d.deviceId}>
+                        {d.label || `Input device ${d.deviceId.slice(0,8)}`}
+                      </option>
+                    ))}
+                  </select>
+                  <div style={{fontSize:11,color:GC.muted,marginTop:4}}>
+                    For best results, play music through a speaker near this device. The selected input just needs to hear the room.
+                  </div>
+                </div>
+              )}
+              {/* Show active device when listening */}
+              {(auddStatus === 'listening' || auddStatus === 'identifying') && selectedDeviceId && audioDevices.length > 0 && (
+                <div style={{fontSize:11,color:GC.muted,marginBottom:8}}>
+                  Input: {audioDevices.find(d => d.deviceId === selectedDeviceId)?.label || 'Selected device'}
+                </div>
+              )}
               {/* ── AudD status banner ── */}
               <div style={{
                 display:'flex', alignItems:'center', gap:10,
