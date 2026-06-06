@@ -1,5 +1,6 @@
 # Pandora Bingo
 
+> **v10.3.0** — Mobile reconnect fix, back button interception with in-game leave modal, artist mode default. ✅
 > **v10.2.0** — Railway deployment: always-on hosting, no sleep timeouts, public URL on Railway infrastructure. ✅
 > **v10.1.0** — iOS Spotify fix: manual song fallback in host tab, auto token refresh, relax isPlaying gate. ✅
 > **v10.0.0** — Solo mode, dynamic song pools (Last.fm), leaderboard, host force-start from waiting screen. ✅
@@ -67,7 +68,7 @@ bash start.sh
 
 Press Ctrl+C to stop both servers.
 
-### Production / Replit (public URL, no Tailscale)
+### Production / Railway (public URL, no Tailscale)
 
 The server serves the built React frontend directly — no Vite dev server needed. Express and the frontend share a single port.
 
@@ -76,8 +77,6 @@ npm run install:all   # install all dependencies (first time only)
 npm run build         # build the React app into client/dist
 npm start             # serve everything from port 3002
 ```
-
-See [REPLIT.md](./REPLIT.md) for full Replit deployment instructions.
 
 ## Deployment
 
@@ -109,16 +108,11 @@ Railway will pick up the push, run the build command from `railway.json`, and re
 
 #### Spotify host whitelist note
 
-The Spotify app is currently in **Development mode**, which limits OAuth access to whitelisted accounts. Only accounts explicitly added in the Spotify Developer Dashboard can authenticate as host. This is sufficient for private game nights. To open hosting to any Spotify user, submit the app for Spotify's Extended Quota review.
+The Spotify app is currently in **Development mode**, which limits OAuth access to whitelisted accounts. Only accounts explicitly added in the Spotify Developer Dashboard can authenticate as host. This is sufficient for private game nights. To open hosting to any Spotify user, submit the app for Spotify's Extended Quota review (organizations with 250k+ MAUs only as of May 2025).
 
 ### Replit (archived)
 
 The project was previously deployed on Replit. The Replit deployment is no longer the primary host. Railway replaced it due to Replit's free-tier sleep timeouts.
-
-Old Replit URL (no longer maintained):
-```
-https://23d8b6f8-954c-4117-8cf4-8adfbfbbaf8b-00-2vhdse288vm11.worf.replit.dev
-```
 
 See [REPLIT.md](./REPLIT.md) if you need to redeploy there.
 
@@ -207,17 +201,17 @@ The host chooses the music source when creating a room:
 
 ### Pick Modes
 
-All three game modes support song mode and artist mode.
+All three game modes support song mode and artist mode. **Artist mode is the default.**
 
-**Song mode** — Players pick specific songs from a pool of 50. A match occurs when that exact song is detected as playing.
+**Song mode** — Players pick specific songs from a pool. A match occurs when that exact song is detected as playing.
 
-**Artist mode** — Players pick artists from a separate pool of 50. A match occurs when any song by that artist is detected. In artist mode, the matched song titles are shown under the artist name on each player's card. Artist matching is case-insensitive and handles featured artists (e.g. "Ed Sheeran, Denise Chaila" matches "Ed Sheeran").
+**Artist mode** — Players pick artists from a separate pool. A match occurs when any song by that artist is detected. In artist mode, the matched song titles are shown under the artist name on each player's card. Artist matching is case-insensitive and handles featured artists (e.g. "Ed Sheeran, Denise Chaila" matches "Ed Sheeran").
 
 The song pool and artist pool are independent lists. No artist appears more than once in either pool.
 
 ### Genres
 
-6 genres supported, each with 50 songs and 50 artists:
+6 genres supported, each with 50 songs and 50 artists (dynamically refreshed from Last.fm with static fallback):
 - Pop
 - Hip-Hop
 - Rock
@@ -244,6 +238,7 @@ In manual mode, the host has a controls tab to:
 In Spotify mode, the host controls tab shows:
 - Currently playing track with album art
 - Auto-detected songs list
+- Collapsible manual fallback list (for iOS detection gaps)
 - Add time, blind mode toggle, and end game buttons
 
 ### Played Songs History
@@ -254,7 +249,7 @@ All players can see a running list of songs that have been played during the gam
 
 Built on Socket.io. All game events are broadcast instantly to every player in the room — player joins, picks confirmed, songs detected, scores updated, gong events, penalties applied, wildcards awarded, game over.
 
-Players join from any device using the 6-character room code. On Replit, anyone with the URL can join from anywhere. On local, players join via Tailscale.
+Players join from any device using the 6-character room code. On Railway, anyone with the URL can join from anywhere. On local, players join via Tailscale.
 
 ### Player Limit
 
@@ -262,7 +257,11 @@ Players join from any device using the 6-character room code. On Replit, anyone 
 
 ### Joining and Leaving
 
-Players can join or leave at any time, including during an active game. Late joiners are sent directly to the pick screen and can participate from that point forward — the game clock keeps running while they pick. If a player disconnects, their slot and game state are preserved. They can rejoin the same room using the same device and their session is restored automatically.
+Players can join or leave at any time, including during an active game. Late joiners are sent directly to the pick screen and can participate from that point forward — the game clock keeps running while they pick.
+
+The browser back button is intercepted throughout the app — it navigates between app screens rather than exiting the app entirely. Pressing back during an active game shows a styled confirmation modal before leaving. The host receives a stronger warning noting that leaving ends the game for all players.
+
+If a player disconnects or accidentally navigates away, their slot and game state are preserved. They can rejoin the same room at any time — the app automatically reconnects from localStorage on return.
 
 ### Play Again
 
@@ -270,7 +269,9 @@ At the end of a game the room stays open with the same code. The host can start 
 
 ### Session Persistence
 
-Player identity is stored in session storage on join. Closing and reopening the tab automatically reconnects the player to their room and restores their screen based on the current game phase. If the session is cleared or expired, the player joins fresh as a new participant.
+Player identity is stored in localStorage on join. This survives tab close, browser restart, and accidental navigation. On return, the client automatically emits a rejoin event and the server restores state from the existing player slot. If the stored session is expired or the room no longer exists, the player joins fresh as a new participant.
+
+When the Socket.io connection drops (e.g. mobile browser suspension), the client reconnects automatically with infinite retry and re-emits the rejoin event on reconnect, putting the socket back into the room's broadcast channel without requiring a manual refresh.
 
 ## Spotify Integration
 
@@ -285,7 +286,6 @@ The Spotify redirect URI is derived dynamically from the request host — no har
 
 - **Local:** `http://127.0.0.1:3002/auth/spotify/callback`
 - **Railway:** `https://pandora-bingo.up.railway.app/auth/spotify/callback`
-- **Replit:** `https://<your-repl-url>/auth/spotify/callback`
 
 Host setup state (genre, mode, all settings) is saved to session storage before the OAuth redirect and restored automatically on return, so no settings are lost during authentication.
 
@@ -294,6 +294,8 @@ Future: Last.fm scrobbling support is planned as an alternative to Spotify for u
 ## Design Decisions
 
 **Separate song and artist pools** — Artist mode uses a dedicated artist list rather than deriving artists from the song list. This prevents duplicates and gives each mode its own strategic pool.
+
+**Artist mode is the default pick mode** — Artist picks are more forgiving and better suited to Spotify's now-playing detection, which returns full artist metadata. Song titles vary across regions and releases; artist names are more stable.
 
 **Server-side Spotify polling** — The server handles all Spotify API calls rather than the client. This keeps the access token secure and ensures all players see consistent match detection regardless of their device. The access token is automatically refreshed before expiry (tokens last 1 hour) so long game sessions don't lose detection mid-game.
 
@@ -311,9 +313,13 @@ Future: Last.fm scrobbling support is planned as an alternative to Spotify for u
 
 **Leaderboard is name-based, no passwords** — Players are identified by their display name. If the same name is entered again in a future game, the server assumes it's the same person and accumulates their stats. Two players cannot share a name in the same room. This is intentionally simple — password auth is planned for a future milestone.
 
-**Dynamic pools with persistent cache** — On room creation the server fetches fresh top tracks/artists for the genre from the Last.fm API. Results are saved to `server/song-cache.json`. If the API is unreachable, the last saved list is used. If no cache exists yet, the hardcoded static pool in `songs.js` is the final fallback. The pool update is async — the static pool is shown immediately while the fetch runs, then the room pool is patched silently.
+**Dynamic pools with persistent cache** — On room creation the server fetches fresh top tracks/artists for the genre from the Last.fm API. Results are saved to `server/song-cache.json`. If the API is unreachable, the last saved list is used. If no cache exists yet, the hardcoded static pool in `songs.js` is the final fallback.
 
 **Solo mode skips the waiting screen** — When the host starts a solo game, the server sets a `soloMode` flag on the room. After the host confirms picks, the server immediately calls `startCountdown` and emits `game:playing`, bypassing the waiting-for-players phase entirely.
+
+**Back button interception** — The app uses the browser History API (`pushState`) to push an entry on every screen transition. A `popstate` listener intercepts the back button and handles navigation internally. During an active game, back button presses are blocked and replaced with a styled confirmation modal. This prevents accidental exits while still allowing deliberate navigation within the app.
+
+**Mobile socket reconnection** — Mobile browsers (especially Safari) suspend WebSocket connections when a tab goes to background. Socket.io is configured with infinite reconnection retries. On every `connect` event (including reconnects), the client re-emits `player:rejoin` with the stored session, putting the socket back into the server-side room broadcast channel automatically.
 
 **Newlywed guesses are server-only secrets** — Secret guess picks are stored on the server but never broadcast to other clients. Only the guessing player sees their own guesses on their card. Hits are computed server-side when a song plays.
 
@@ -327,7 +333,7 @@ Future: Last.fm scrobbling support is planned as an alternative to Spotify for u
 
 **Blind mode is a room-level toggle, changeable mid-game** — The host can flip blind mode on or off from the Host Controls tab at any time during the game. This allows the host to reveal everyone's remaining hidden picks at a dramatic moment if desired.
 
-**localStorage for reconnection** — Player ID and room code are stored in localStorage on join. This survives tab close, browser restart, and accidental navigation — not just page reloads. On return, the client automatically emits a rejoin event and the server restores state from the existing player slot. If the stored session is expired or the room no longer exists, the player joins fresh as a new participant.
+**localStorage for reconnection** — Player ID and room code are stored in localStorage on join. This survives tab close, browser restart, and accidental navigation — not just page reloads. On return, the client automatically emits a rejoin event and the server restores state from the existing player slot.
 
 **Spotify redirect preserves setup state** — Before redirecting to Spotify OAuth, the host's in-progress room settings are saved to session storage. On return from Spotify, the settings are restored and the user lands back on the host setup screen with everything pre-filled.
 
@@ -341,36 +347,40 @@ Future: Last.fm scrobbling support is planned as an alternative to Spotify for u
 ```
 pandora-bingo/
   server/
-    index.js      Express + Socket.io entry point; serves client/dist in production;
-                  includes /api/spotify/search proxy endpoint
-    game.js       Room state, player management, scoring logic, all game modes;
-                  ID-first match detection with string fallback
+    index.js           Express + Socket.io entry point; serves client/dist in production;
+                       includes /api/spotify/search proxy endpoint
+    game.js            Room state, player management, scoring logic, all game modes;
+                       ID-first match detection with string fallback
     songs.js           Static song and artist pools by genre (50 each; final fallback)
     dynamic-songs.js   Last.fm API fetch with disk cache; falls back to cache then static
     leaderboard.js     Persistent player stats (JSON file); name-based identity; win tracking
     spotify.js         Spotify OAuth, now-playing polling, searchTracks, searchArtists
     song-cache.json    Auto-generated; Last.fm pool cache per genre (not committed)
     leaderboard.json   Auto-generated; persistent player stats (not committed)
-    .env          Spotify credentials for local dev (not committed to git)
+    .env               Spotify credentials for local dev (not committed to git)
   client/
     src/
-      App.jsx               Screen routing, socket event handling, session persistence
-      socket.js             Socket.io client
+      App.jsx               Screen routing, history API back button handling,
+                            socket reconnect handler, in-game leave modal
+      socket.js             Socket.io client with aggressive reconnection settings
       index.css             Base styles
       components/
-        HomeScreen.jsx        Name entry, host setup, game mode + source selection; leaderboard link
+        HomeScreen.jsx        Name entry, host setup, game mode + source selection;
+                              leaderboard link; artist mode default
         LobbyScreen.jsx       Room code, player list, start + solo start buttons
         LeaderboardScreen.jsx All-time player stats: matches, wins, games played
         PickScreen.jsx        Pick flows for all 3 modes; SearchPicker with live Spotify
                               search + static pool fallback; SelectedChips; ProgressDots
         GameScreen.jsx        Timer, card, scoreboard, host controls, event toasts;
                               ID-first client-side match display
-        EndScreen.jsx         Winner, final scores, play again with settings
+        EndScreen.jsx         Winner, final scores, play again with settings;
+                              artist mode default
         SpotifyCallback.jsx   OAuth callback handler
     dist/                   Built frontend (generated by npm run build; not committed)
   .replit         Replit run/build config
   replit.nix      Replit Nix environment (Node 20)
   REPLIT.md       Replit deployment guide
+  railway.json    Railway build and start commands
   package.json    Root scripts: install:all, build, start, dev
   start.sh        Local one-command launcher (Vite + Express)
   .gitignore      Excludes .env, node_modules, client/dist
@@ -390,9 +400,10 @@ pandora-bingo/
 - v8-replit — Production build mode, Replit deployment, dynamic Spotify redirect URI, single-port Express serving, public URL with no Tailscale required
 - v9-live-search — Live Spotify search in pick phase: search-as-you-type against full Spotify catalog; picks store track/artist IDs; server match detection ID-first with string fallback; artist matching uses Spotify artist IDs from now-playing payload; album art thumbnails in search results and pick chips; static genre pool retained as fallback for manual-mode rooms
 - v9.1-ui-overhaul — Retro TV game show visual theme (muted neons, CRT scanline, stage curtains, Orbitron font, neon glow animations); Web Audio API synthesized sound effects (hit chime, gong hit, backfire buzz, wildcard sweep, penalty thud, win fanfare); room code corner badge on all in-game screens; localStorage reconnection (survives tab close/browser restart)
+- v10.0-platform — Solo mode (host plays alone, waiting screen skipped); dynamic song/artist pools fetched from Last.fm API with persistent disk cache and static fallback; persistent leaderboard tracking matches, wins, and games played per player (name-based, no passwords); name uniqueness enforced per room; host can force-start from the waiting screen after confirming their own picks
+- v10.1-spotify-ios — Manual song fallback added to Spotify host tab (collapsible, clearly labeled as iOS workaround); Spotify access token auto-refreshes before expiry during polling; removed strict `isPlaying` gate that blocked detection during brief Spotify state gaps
 - v10.2-railway — Migrated primary deployment from Replit to Railway; always-on hosting with no sleep timeouts; auto-deploy on git push; `railway.json` added with build and start commands; `NODE_ENV=production` triggers production mode; Spotify redirect URI updated to Railway domain; confirmed working on Pop!_OS, Android, and iPhone
-- v10.1-spotify-ios — Manual song fallback added to Spotify host tab (collapsible, clearly labeled as iOS workaround); Spotify access token auto-refreshes before expiry during polling; removed strict `isPlaying` gate that blocked detection during brief Spotify state gaps; `leaderboard.json` and `song-cache.json` added to `.gitignore` to prevent Replit merge conflicts
-- v10.0-platform — Solo mode (host plays alone, waiting screen skipped); dynamic song/artist pools fetched from Last.fm API with persistent disk cache and static fallback; persistent leaderboard tracking matches, wins, and games played per player (name-based, no passwords); name uniqueness enforced per room; host can force-start from the waiting screen after confirming their own picks; `start.sh` fixed to use relative paths and skip Vite dev server on Replit
+- v10.3-mobile-ux — Mobile socket reconnect fix (infinite retry + rejoin on reconnect event so updates resume after browser suspension without manual refresh); back button interception via History API with popstate handler; in-game leave modal (styled, host-specific warning, shows room code to guests); artist mode set as default pick mode
 
 **Upcoming**
 
@@ -407,5 +418,5 @@ Allow the host to play music from any app on their phone and have the game detec
 - Spotify playback control (play/pause/skip from within the game)
 - Pre-game countdown timer
 - Last.fm scrobbling as alternative music source
-- ~~Game history and leaderboard~~ ✅ done in v10.0
 - Mobile-optimized UI improvements
+- Password auth for leaderboard (replace name-based identity)

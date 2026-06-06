@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import socket from '../socket.js';
 import { playHit, playGong, playBackfire, playWildcard, playPenalty, playWin } from '../sounds.js';
 
@@ -290,6 +290,129 @@ export default function GameScreen({ room, playerId, isHost, spotifyTokens, nowP
   const prevPhaseRef = useRef(null);
   const prevGongEventsCountRef = useRef(0);
 
+  // ── AudD mic detection state ─────────────────────────────────────────────
+  const [auddStatus, setAuddStatus] = useState('idle'); // idle | requesting | listening | identifying | error
+  const [auddLastResult, setAuddLastResult] = useState(null); // { title, artist } | null
+  const [auddError, setAuddError] = useState('');
+  const [auddLog, setAuddLog] = useState([]); // array of { title, artist } — detected songs this session
+  const auddStreamRef = useRef(null);
+  const auddLoopRef = useRef(null);
+  const auddActiveRef = useRef(false);
+
+  const isAuddMode = room && room.musicSource === 'audd';
+
+  // Capture one ~4-second clip, POST to /api/audd/identify, emit result
+  const captureAndIdentify = useCallback(async () => {
+    if (!auddActiveRef.current) return;
+    try {
+      const stream = auddStreamRef.current;
+      if (!stream) return;
+
+      const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+        ? 'audio/webm;codecs=opus'
+        : MediaRecorder.isTypeSupported('audio/webm')
+          ? 'audio/webm'
+          : 'audio/ogg;codecs=opus';
+
+      const recorder = new MediaRecorder(stream, { mimeType });
+      const chunks = [];
+      recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
+
+      await new Promise((resolve) => {
+        recorder.onstop = resolve;
+        recorder.start();
+        setTimeout(() => recorder.stop(), 4000);
+      });
+
+      if (!auddActiveRef.current) return;
+      setAuddStatus('identifying');
+
+      const blob = new Blob(chunks, { type: mimeType });
+      const arrayBuf = await blob.arrayBuffer();
+
+      const res = await fetch('/api/audd/identify', {
+        method: 'POST',
+        headers: { 'Content-Type': mimeType },
+        body: arrayBuf,
+      });
+      const data = await res.json();
+
+      if (!auddActiveRef.current) return;
+
+      if (data.result && data.result.title && data.result.artist) {
+        const { title, artist } = data.result;
+        setAuddLastResult({ title, artist });
+        setAuddLog(prev => {
+          // Only append if different from last logged
+          const last = prev[prev.length - 1];
+          if (last && last.title === title && last.artist === artist) return prev;
+          return [...prev, { title, artist }];
+        });
+        // Emit to server — server deduplicates before calling game.playSong
+        socket.emit('host:audd_song', { title, artist });
+      } else {
+        setAuddLastResult(null);
+      }
+      setAuddStatus('listening');
+    } catch (err) {
+      if (auddActiveRef.current) {
+        console.error('AudD capture error:', err);
+        setAuddStatus('listening'); // keep trying even on transient errors
+      }
+    }
+  }, []);
+
+  // Start mic stream + polling loop
+  const startAuddListening = useCallback(async () => {
+    if (auddActiveRef.current) return;
+    setAuddStatus('requesting');
+    setAuddError('');
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+      auddStreamRef.current = stream;
+      auddActiveRef.current = true;
+      setAuddStatus('listening');
+
+      // Run immediately, then every 15 seconds
+      captureAndIdentify();
+      auddLoopRef.current = setInterval(captureAndIdentify, 15000);
+    } catch (err) {
+      setAuddStatus('error');
+      if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+        setAuddError('Microphone permission denied. Please allow mic access and refresh.');
+      } else {
+        setAuddError('Could not access microphone: ' + err.message);
+      }
+    }
+  }, [captureAndIdentify]);
+
+  // Stop mic stream + polling loop
+  const stopAuddListening = useCallback(() => {
+    auddActiveRef.current = false;
+    if (auddLoopRef.current) { clearInterval(auddLoopRef.current); auddLoopRef.current = null; }
+    if (auddStreamRef.current) {
+      auddStreamRef.current.getTracks().forEach(t => t.stop());
+      auddStreamRef.current = null;
+    }
+    setAuddStatus('idle');
+  }, []);
+
+  // Auto-start AudD when game goes to playing phase and this is the host
+  useEffect(() => {
+    if (!isHost || !isAuddMode) return;
+    if (room && room.phase === 'playing' && auddStatus === 'idle') {
+      startAuddListening();
+    }
+    if (room && room.phase === 'ended') {
+      stopAuddListening();
+    }
+  }, [room && room.phase, isHost, isAuddMode]); // eslint-disable-line
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => { stopAuddListening(); };
+  }, [stopAuddListening]);
+
   const addToast = (message, color = '#fbbf24') => {
     const id = Date.now() + Math.random();
     setToasts(prev => [...prev, { id, message, color }]);
@@ -392,6 +515,7 @@ export default function GameScreen({ room, playerId, isHost, spotifyTokens, nowP
   const sorted = [...room.players].sort((a, b) => b.score - a.score);
   const isArtistMode = room.pickMode === 'artists';
   const isSpotifyMode = room.musicSource === 'spotify';
+  const isAuddMode = room.musicSource === 'audd';
   const isNewlywed = room.gameMode === 'newlywed';
   const isGongShow = room.gameMode === 'gongshow';
 
@@ -492,6 +616,7 @@ export default function GameScreen({ room, playerId, isHost, spotifyTokens, nowP
         {isNewlywed && <span style={s.badge(GC.amberDim,GC.amber,'rgba(255,179,71,0.3)')}>🎯 Newlywed Bingo</span>}
         <span style={s.badge('rgba(129,140,248,0.12)',GC.indigo,'rgba(129,140,248,0.3)')}>{isArtistMode ? 'Artist mode' : 'Song mode'} — {room.genre}</span>
         {isSpotifyMode && <span style={s.badge('rgba(29,185,84,0.12)','#1DB954','rgba(29,185,84,0.3)')}>Spotify</span>}
+        {isAuddMode && <span style={s.badge('rgba(129,140,248,0.12)',GC.indigo,'rgba(129,140,248,0.3)')}>🎙 Auto-detect</span>}
         {isGongShow && room.blindMode && <span style={s.badge('rgba(196,181,253,0.12)',GC.indigo,'rgba(129,140,248,0.3)')}>🙈 Blind</span>}
       </div>
 
@@ -509,7 +634,7 @@ export default function GameScreen({ room, playerId, isHost, spotifyTokens, nowP
       <div style={s.tabs}>
         <button style={s.tab(tab==='card')} onClick={() => setTab('card')}>My card</button>
         <button style={s.tab(tab==='scores')} onClick={() => setTab('scores')}>Scores</button>
-        {isHost && <button style={s.tab(tab==='host')} onClick={() => setTab('host')}>{isSpotifyMode ? 'Host (Spotify)' : 'Host controls'}</button>}
+        {isHost && <button style={s.tab(tab==='host')} onClick={() => setTab('host')}>{isSpotifyMode ? 'Host (Spotify)' : isAuddMode ? 'Host (Mic)' : 'Host controls'}</button>}
       </div>
 
       {tab === 'card' && me && (
@@ -560,6 +685,94 @@ export default function GameScreen({ room, playerId, isHost, spotifyTokens, nowP
                   ⚠️ Song not detected? Tap to mark manually
                 </summary>
                 <div style={{fontSize:12,color:'#475569',marginBottom:8}}>Use this if Spotify auto-detection misses a song (common on iOS).</div>
+                <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill, minmax(160px, 1fr))',gap:6}}>
+                  {(room.songPool||[]).map((song,i) => {
+                    const played = room.playedSongs.some(p => p.title === song.title);
+                    return (
+                      <div key={i} style={s.hostSong(played)} onClick={() => !played && socket.emit('host:play_song', { songTitle: song.title })}>
+                        <div style={{fontSize:12,fontWeight:600,color:played?'#93c5fd':'#e2e8f0',marginBottom:1}}>{played?'✓ ':''}{song.title}</div>
+                        <div style={{fontSize:11,color:'#64748b'}}>{song.artist}</div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </details>
+            </>
+          ) : isAuddMode ? (
+            <>
+              {/* ── AudD status banner ── */}
+              <div style={{
+                display:'flex', alignItems:'center', gap:10,
+                padding:'10px 14px', borderRadius:8, marginBottom:12,
+                background: auddStatus === 'error' ? 'rgba(248,113,113,0.1)' : auddStatus === 'listening' || auddStatus === 'identifying' ? 'rgba(129,140,248,0.1)' : 'rgba(255,179,71,0.1)',
+                border: `1px solid ${auddStatus === 'error' ? 'rgba(248,113,113,0.3)' : auddStatus === 'listening' || auddStatus === 'identifying' ? 'rgba(129,140,248,0.3)' : 'rgba(255,179,71,0.3)'}`,
+              }}>
+                <span style={{fontSize:20}}>
+                  {auddStatus === 'idle' && '🎙'}
+                  {auddStatus === 'requesting' && '⏳'}
+                  {auddStatus === 'listening' && '🎙'}
+                  {auddStatus === 'identifying' && '🔍'}
+                  {auddStatus === 'error' && '⚠️'}
+                </span>
+                <div>
+                  <div style={{fontSize:13, fontWeight:600, color:
+                    auddStatus === 'error' ? GC.red :
+                    auddStatus === 'listening' ? GC.indigo :
+                    auddStatus === 'identifying' ? GC.cyan :
+                    GC.amber
+                  }}>
+                    {auddStatus === 'idle' && 'Microphone not started'}
+                    {auddStatus === 'requesting' && 'Requesting mic permission…'}
+                    {auddStatus === 'listening' && 'Listening — captures every 15 seconds'}
+                    {auddStatus === 'identifying' && 'Identifying song…'}
+                    {auddStatus === 'error' && 'Microphone error'}
+                  </div>
+                  {auddStatus === 'error' && auddError && (
+                    <div style={{fontSize:11,color:'#f87171',marginTop:2}}>{auddError}</div>
+                  )}
+                  {auddLastResult && auddStatus !== 'error' && (
+                    <div style={{fontSize:11,color:GC.muted,marginTop:2}}>
+                      Last: {auddLastResult.title} — {auddLastResult.artist}
+                    </div>
+                  )}
+                </div>
+                {/* Manual start button if auto-start failed or was idle */}
+                {(auddStatus === 'idle' || auddStatus === 'error') && (
+                  <button
+                    onClick={startAuddListening}
+                    style={{marginLeft:'auto',padding:'6px 12px',borderRadius:6,border:`1px solid ${GC.indigo}`,background:'rgba(129,140,248,0.12)',color:GC.indigo,cursor:'pointer',fontSize:12,fontWeight:700,whiteSpace:'nowrap'}}
+                  >
+                    Start mic
+                  </button>
+                )}
+                {(auddStatus === 'listening' || auddStatus === 'identifying') && (
+                  <button
+                    onClick={stopAuddListening}
+                    style={{marginLeft:'auto',padding:'6px 12px',borderRadius:6,border:`1px solid ${GC.border}`,background:'transparent',color:GC.muted,cursor:'pointer',fontSize:12,fontWeight:700,whiteSpace:'nowrap'}}
+                  >
+                    Stop mic
+                  </button>
+                )}
+              </div>
+
+              {/* ── AudD detected songs log ── */}
+              {auddLog.length > 0 && (
+                <div style={{marginBottom:12}}>
+                  <div style={{fontSize:12,color:'#64748b',marginBottom:6}}>Auto-detected this session:</div>
+                  <div style={s.playedList}>
+                    {auddLog.map((song,i) => (
+                      <span key={i} style={s.playedChip}>{song.title} — {song.artist}</span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* ── Manual fallback ── */}
+              <details style={{marginTop:4}}>
+                <summary style={{fontSize:12,color:'#64748b',cursor:'pointer',userSelect:'none',marginBottom:8}}>
+                  Song not detected? Mark manually
+                </summary>
+                <div style={{fontSize:12,color:'#475569',marginBottom:8}}>Tap a song to mark it played without mic detection.</div>
                 <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill, minmax(160px, 1fr))',gap:6}}>
                   {(room.songPool||[]).map((song,i) => {
                     const played = room.playedSongs.some(p => p.title === song.title);

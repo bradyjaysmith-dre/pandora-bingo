@@ -51,7 +51,17 @@ export default function HomeScreen({ spotifyConnected, onLeaderboard }) {
   const [musicSource, setMusicSource] = useState('manual');
   const [gameMode, setGameMode] = useState('standard');
   const [blindMode, setBlindMode] = useState(false);
+  const [spotifyAvailable, setSpotifyAvailable] = useState(false);
 
+  // Fetch server config to determine which music sources to show
+  useEffect(() => {
+    fetch('/api/config')
+      .then(r => r.json())
+      .then(cfg => setSpotifyAvailable(!!cfg.spotifyAvailable))
+      .catch(() => setSpotifyAvailable(false));
+  }, []);
+
+  // Restore host settings saved before Spotify OAuth redirect
   useEffect(() => {
     const saved = sessionStorage.getItem('pandora_pre_spotify');
     if (saved) {
@@ -201,7 +211,9 @@ export default function HomeScreen({ spotifyConnected, onLeaderboard }) {
     if (!name.trim()) { alert('Enter your name'); return; }
     if (!genre) { alert('Select a genre'); return; }
     if (musicSource === 'spotify' && !spotifyConnected) { alert('Connect your Spotify account first'); return; }
-    socket.emit('host:create', { hostName: name.trim(), genre, matchTarget, timeLimit, pickMode, musicSource, gameMode, blindMode });
+    // If somehow spotify was selected but is no longer available, fall back to manual
+    const resolvedSource = (musicSource === 'spotify' && !spotifyAvailable) ? 'manual' : musicSource;
+    socket.emit('host:create', { hostName: name.trim(), genre, matchTarget, timeLimit, pickMode, musicSource: resolvedSource, gameMode, blindMode });
   };
 
   const joinGame = () => {
@@ -320,22 +332,37 @@ export default function HomeScreen({ spotifyConnected, onLeaderboard }) {
           <div style={s.sourceTitle(musicSource === 'manual')}>Manual</div>
           <div style={s.sourceSub}>Host marks songs as they play. Works with any music source.</div>
         </div>
-        <div style={s.sourceCard(musicSource === 'spotify')} onClick={() => setMusicSource('spotify')}>
-          <div style={s.sourceTitle(musicSource === 'spotify')}>Spotify</div>
-          <div style={s.sourceSub}>Auto-detects songs from Spotify. Requires Spotify account.</div>
+        <div style={s.sourceCard(musicSource === 'audd')} onClick={() => setMusicSource('audd')}>
+          <div style={s.sourceTitle(musicSource === 'audd')}>🎙 Auto-detect (mic)</div>
+          <div style={s.sourceSub}>Host's device listens via microphone and identifies songs automatically. Works with any music app.</div>
         </div>
-
-        {musicSource === 'spotify' && (
-          <div style={{ marginBottom: 16 }}>
-            {spotifyConnected ? (
-              <div style={s.spotifyBadge}>
-                <span style={{ fontSize: 16 }}>✓</span>
-                <span style={s.spotifyBadgeText}>Spotify connected</span>
-              </div>
-            ) : (
-              <button style={s.btnSpotify} onClick={connectSpotify}>Connect Spotify</button>
-            )}
+        {musicSource === 'audd' && (
+          <div style={{ padding: '10px 14px', borderRadius: 8, background: 'rgba(129,140,248,0.08)', border: '1px solid rgba(129,140,248,0.25)', marginBottom: 8 }}>
+            <div style={{ fontSize: 12, color: C.indigo, fontWeight: 600, marginBottom: 4 }}>How it works</div>
+            <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.5 }}>
+              When the game starts, your browser will ask for microphone permission. It captures short audio clips every ~15 seconds and identifies the song automatically — no setup required.
+            </div>
           </div>
+        )}
+        {spotifyAvailable && (
+          <>
+            <div style={s.sourceCard(musicSource === 'spotify')} onClick={() => setMusicSource('spotify')}>
+              <div style={s.sourceTitle(musicSource === 'spotify')}>Spotify</div>
+              <div style={s.sourceSub}>Auto-detects songs from Spotify. Requires Spotify account.</div>
+            </div>
+            {musicSource === 'spotify' && (
+              <div style={{ marginBottom: 16 }}>
+                {spotifyConnected ? (
+                  <div style={s.spotifyBadge}>
+                    <span style={{ fontSize: 16 }}>✓</span>
+                    <span style={s.spotifyBadgeText}>Spotify connected</span>
+                  </div>
+                ) : (
+                  <button style={s.btnSpotify} onClick={connectSpotify}>Connect Spotify</button>
+                )}
+              </div>
+            )}
+          </>
         )}
 
         <div style={s.divider} />
