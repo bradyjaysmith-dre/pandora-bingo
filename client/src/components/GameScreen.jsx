@@ -321,13 +321,15 @@ export default function GameScreen({ room, playerId, isHost, spotifyTokens, nowP
     if (isAuddMode && isHost) refreshAudioDevices();
   }, [isAuddMode, isHost, refreshAudioDevices]);
 
-  const [auddDebugLog, setAuddDebugLog] = useState([]); // on-screen debug entries
+  const [auddDebugLog, setAuddDebugLog] = useState([]);
   const [showDebug, setShowDebug] = useState(false);
 
   const auddDebug = (msg) => {
     const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
     setAuddDebugLog(prev => [...prev.slice(-30), `${time} ${msg}`]);
   };
+
+  const captureAndIdentifyRef = useRef(null);
 
   // Capture one ~6-second clip, POST to /api/audd/identify, emit result.
   // On a null result, retries once after 3 seconds before giving up.
