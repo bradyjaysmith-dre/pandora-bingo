@@ -174,7 +174,37 @@ app.get('/api/spotify/search', async (req, res) => {
   }
 });
 
-// ── Static frontend (production) ─────────────────────────────────────────────
+// ── iTunes search — used during pick phase in AudD rooms ────────────────────
+// Free, no key required. Returns tracks or artists from Apple's catalog.
+// type=track returns songs; type=musicArtist returns artists.
+app.get('/api/itunes/search', async (req, res) => {
+  const { q, type = 'track' } = req.query;
+  if (!q || !q.trim()) return res.json([]);
+  try {
+    const entity = type === 'artist' ? 'musicArtist' : 'song';
+    const url = `https://itunes.apple.com/search?term=${encodeURIComponent(q.trim())}&entity=${entity}&limit=15&media=music`;
+    const response = await fetch(url);
+    const data = await response.json();
+    if (type === 'artist') {
+      const seen = new Set();
+      const results = (data.results || [])
+        .filter(a => { if (seen.has(a.artistName)) return false; seen.add(a.artistName); return true; })
+        .map(a => ({ name: a.artistName, id: String(a.artistId) }));
+      res.json(results);
+    } else {
+      const results = (data.results || []).map(t => ({
+        title: t.trackName,
+        artist: t.artistName,
+        id: String(t.trackId),
+        albumArt: t.artworkUrl60 || null,
+      }));
+      res.json(results);
+    }
+  } catch (err) {
+    console.error('iTunes search error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
 // Serve the Vite build from client/dist. The SPA catch-all must come AFTER
 // all API routes so that /api/* and /auth/* are handled by Express first.
 const clientDist = path.join(__dirname, '..', 'client', 'dist');

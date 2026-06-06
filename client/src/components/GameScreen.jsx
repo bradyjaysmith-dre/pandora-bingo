@@ -301,8 +301,9 @@ export default function GameScreen({ room, playerId, isHost, spotifyTokens, nowP
 
   const isAuddMode = room && room.musicSource === 'audd';
 
-  // Capture one ~4-second clip, POST to /api/audd/identify, emit result
-  const captureAndIdentify = useCallback(async () => {
+  // Capture one ~6-second clip, POST to /api/audd/identify, emit result.
+  // On a null result, retries once after 3 seconds before giving up.
+  const captureAndIdentify = useCallback(async (isRetry = false) => {
     if (!auddActiveRef.current) return;
     try {
       const stream = auddStreamRef.current;
@@ -321,7 +322,7 @@ export default function GameScreen({ room, playerId, isHost, spotifyTokens, nowP
       await new Promise((resolve) => {
         recorder.onstop = resolve;
         recorder.start();
-        setTimeout(() => recorder.stop(), 4000);
+        setTimeout(() => recorder.stop(), 6000); // 6s for better fingerprint signal
       });
 
       if (!auddActiveRef.current) return;
@@ -343,21 +344,26 @@ export default function GameScreen({ room, playerId, isHost, spotifyTokens, nowP
         const { title, artist } = data.result;
         setAuddLastResult({ title, artist });
         setAuddLog(prev => {
-          // Only append if different from last logged
           const last = prev[prev.length - 1];
           if (last && last.title === title && last.artist === artist) return prev;
           return [...prev, { title, artist }];
         });
-        // Emit to server — server deduplicates before calling game.playSong
         socket.emit('host:audd_song', { title, artist });
+        setAuddStatus('listening');
       } else {
-        setAuddLastResult(null);
+        // No match — retry once after 3 seconds if this wasn't already a retry
+        if (!isRetry) {
+          setAuddStatus('listening');
+          setTimeout(() => captureAndIdentify(true), 3000);
+        } else {
+          setAuddLastResult(null);
+          setAuddStatus('listening');
+        }
       }
-      setAuddStatus('listening');
     } catch (err) {
       if (auddActiveRef.current) {
         console.error('AudD capture error:', err);
-        setAuddStatus('listening'); // keep trying even on transient errors
+        setAuddStatus('listening');
       }
     }
   }, []);
@@ -373,9 +379,9 @@ export default function GameScreen({ room, playerId, isHost, spotifyTokens, nowP
       auddActiveRef.current = true;
       setAuddStatus('listening');
 
-      // Run immediately, then every 15 seconds
+      // Run immediately, then every 10 seconds
       captureAndIdentify();
-      auddLoopRef.current = setInterval(captureAndIdentify, 15000);
+      auddLoopRef.current = setInterval(captureAndIdentify, 10000);
     } catch (err) {
       setAuddStatus('error');
       if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
@@ -722,7 +728,7 @@ export default function GameScreen({ room, playerId, isHost, spotifyTokens, nowP
                   }}>
                     {auddStatus === 'idle' && 'Microphone not started'}
                     {auddStatus === 'requesting' && 'Requesting mic permission…'}
-                    {auddStatus === 'listening' && 'Listening — captures every 15 seconds'}
+                    {auddStatus === 'listening' && 'Listening — captures every 10 seconds'}
                     {auddStatus === 'identifying' && 'Identifying song…'}
                     {auddStatus === 'error' && 'Microphone error'}
                   </div>

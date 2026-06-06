@@ -2,20 +2,33 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import socket from '../socket.js';
 
 // ─── Search hook ──────────────────────────────────────────────────────────────
+// Supports Spotify search (when musicSource === 'spotify') and
+// iTunes search (when musicSource === 'audd'). Both return the same shape:
+//   tracks:  { id, title, artist, albumArt }
+//   artists: { id, name }
 
-function useSpotifySearch(roomCode, pickMode, isSpotifyRoom) {
+function useSearch(roomCode, pickMode, musicSource) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState(null);
   const debounceRef = useRef(null);
 
+  const isSpotify = musicSource === 'spotify';
+  const isAudd    = musicSource === 'audd';
+  const isSearchable = isSpotify || isAudd;
+
   const search = useCallback((q) => {
-    if (!q.trim() || !isSpotifyRoom) { setResults([]); return; }
+    if (!q.trim() || !isSearchable) { setResults([]); return; }
     setSearching(true);
     setSearchError(null);
     const type = pickMode === 'artists' ? 'artist' : 'track';
-    fetch(`/api/spotify/search?q=${encodeURIComponent(q)}&type=${type}&room=${roomCode}`)
+
+    const url = isSpotify
+      ? `/api/spotify/search?q=${encodeURIComponent(q)}&type=${type}&room=${roomCode}`
+      : `/api/itunes/search?q=${encodeURIComponent(q)}&type=${type}`;
+
+    fetch(url)
       .then(r => r.json())
       .then(data => {
         if (Array.isArray(data)) setResults(data);
@@ -23,7 +36,7 @@ function useSpotifySearch(roomCode, pickMode, isSpotifyRoom) {
       })
       .catch(() => setSearchError('Search failed'))
       .finally(() => setSearching(false));
-  }, [roomCode, pickMode, isSpotifyRoom]);
+  }, [roomCode, pickMode, musicSource, isSearchable, isSpotify]); // eslint-disable-line
 
   const handleQueryChange = (q) => {
     setQuery(q);
@@ -33,20 +46,26 @@ function useSpotifySearch(roomCode, pickMode, isSpotifyRoom) {
     debounceRef.current = setTimeout(() => search(q), 300);
   };
 
-  return { query, handleQueryChange, results, searching, searchError, setResults, setQuery };
+  return { query, handleQueryChange, results, searching, searchError, setResults, setQuery, isSearchable };
 }
 
 // ─── Shared search input + results ───────────────────────────────────────────
 
-function SearchPicker({ roomCode, pickMode, isSpotifyRoom, pool, selected, onToggle, limit, accentColor = '#6366f1', accentBg = '#312e81', disabledKeys = new Set() }) {
-  const { query, handleQueryChange, results, searching, searchError, setResults, setQuery } = useSpotifySearch(roomCode, pickMode, isSpotifyRoom);
+function SearchPicker({ roomCode, pickMode, musicSource, pool, selected, onToggle, limit, accentColor = '#6366f1', accentBg = '#312e81', disabledKeys = new Set() }) {
+  const { query, handleQueryChange, results, searching, searchError, setResults, setQuery, isSearchable } = useSearch(roomCode, pickMode, musicSource);
   const isArtistMode = pickMode === 'artists';
+  const isAudd = musicSource === 'audd';
   const getKey = (item) => isArtistMode ? (item.id || item.name) : (item.id || item.title);
   const getLabel = (item) => isArtistMode ? item.name : item.title;
   const getSub = (item) => isArtistMode ? null : item.artist;
   const isSelected = (item) => selected.some(s => getKey(s) === getKey(item));
-  const showResults = isSpotifyRoom && query.trim().length > 0;
+  const showResults = isSearchable && query.trim().length > 0;
   const displayList = showResults ? results : pool;
+
+  const searchHint = isAudd
+    ? `Type to search the iTunes catalog, or scroll below for genre picks`
+    : `Type to search the Spotify catalog, or scroll below for genre picks`;
+  const searchPlaceholder = isArtistMode ? 'Search artists...' : 'Search songs...';
 
   const s = {
     searchWrap: { position: 'relative', marginBottom: 12 },
@@ -73,21 +92,21 @@ function SearchPicker({ roomCode, pickMode, isSpotifyRoom, pool, selected, onTog
 
   return (
     <div>
-      {isSpotifyRoom && (
+      {isSearchable && (
         <div style={s.searchWrap}>
           <span style={s.searchIcon}>🔍</span>
           <input
             style={s.searchInput}
             value={query}
             onChange={e => handleQueryChange(e.target.value)}
-            placeholder={`Search ${isArtistMode ? 'artists' : 'songs'}...`}
+            placeholder={searchPlaceholder}
             autoComplete="off"
           />
           {query && <button style={s.clearBtn} onClick={() => { setQuery(''); setResults([]); }}>✕</button>}
         </div>
       )}
-      {!isSpotifyRoom && <div style={s.hint}>Pick from the genre pool below</div>}
-      {isSpotifyRoom && !query && <div style={s.hint}>Type to search the Spotify catalog, or scroll below for genre picks</div>}
+      {!isSearchable && <div style={s.hint}>Pick from the genre pool below</div>}
+      {isSearchable && !query && <div style={s.hint}>{searchHint}</div>}
 
       {searching && <div style={s.searching}>Searching...</div>}
       {searchError && <div style={s.error}>{searchError}</div>}
@@ -167,6 +186,7 @@ function StandardPickScreen({ room }) {
   const [picks, setPicks] = useState([]);
   const isArtistMode = room.pickMode === 'artists';
   const isSpotifyRoom = room.musicSource === 'spotify';
+  const isAuddRoom = room.musicSource === 'audd';
   const pool = isArtistMode ? (room.artistPool || []) : (room.songPool || []);
   const getKey = (item) => isArtistMode ? (item.id || item.name) : (item.id || item.title);
   const LIMIT = 5;
@@ -187,11 +207,12 @@ function StandardPickScreen({ room }) {
   };
 
   const s = sharedStyles();
+  const searchLabel = isSpotifyRoom ? ' · Spotify search enabled' : isAuddRoom ? ' · iTunes search enabled' : '';
 
   return (
     <div style={s.wrap}>
       <div style={s.title}>Pick your {LIMIT} {isArtistMode ? 'artists' : 'songs'}</div>
-      <div style={s.sub}>Genre: {room.genre} · {isArtistMode ? 'Artist' : 'Song'} mode{isSpotifyRoom ? ' · Spotify search enabled' : ''}</div>
+      <div style={s.sub}>Genre: {room.genre} · {isArtistMode ? 'Artist' : 'Song'} mode{searchLabel}</div>
 
       <ProgressDots count={picks.length} limit={LIMIT} color="#6366f1" />
       <SelectedChips picks={picks} pickMode={room.pickMode} onRemove={(item) => toggle(item)} accentColor="#6366f1" limit={LIMIT} />
@@ -199,7 +220,7 @@ function StandardPickScreen({ room }) {
       <SearchPicker
         roomCode={room.code}
         pickMode={room.pickMode}
-        isSpotifyRoom={isSpotifyRoom}
+        musicSource={room.musicSource}
         pool={pool}
         selected={picks}
         onToggle={toggle}
@@ -224,8 +245,10 @@ function NewlywedPickScreen({ room }) {
   const [guesses, setGuesses] = useState([]);
   const isArtistMode = room.pickMode === 'artists';
   const isSpotifyRoom = room.musicSource === 'spotify';
+  const isAuddRoom = room.musicSource === 'audd';
   const pool = isArtistMode ? (room.artistPool || []) : (room.songPool || []);
   const getKey = (item) => isArtistMode ? (item.id || item.name) : (item.id || item.title);
+  const searchLabel = isSpotifyRoom ? ' · Spotify search enabled' : isAuddRoom ? ' · iTunes search enabled' : '';
 
   const allCommitted = (currentPhase) => {
     const all = [];
@@ -274,7 +297,7 @@ function NewlywedPickScreen({ room }) {
   return (
     <div style={s.wrap}>
       <div style={s.title}>Newlywed Bingo — {isArtistMode ? 'Artist' : 'Song'} mode</div>
-      <div style={s.sub}>Genre: {room.genre}{isSpotifyRoom ? ' · Spotify search enabled' : ''}</div>
+      <div style={s.sub}>Genre: {room.genre}{searchLabel}</div>
 
       {/* Step bar */}
       <div style={{ display: 'flex', gap: 6, marginBottom: 14 }}>
@@ -315,7 +338,7 @@ function NewlywedPickScreen({ room }) {
       <SearchPicker
         roomCode={room.code}
         pickMode={room.pickMode}
-        isSpotifyRoom={isSpotifyRoom}
+        musicSource={room.musicSource}
         pool={pool}
         selected={cfg.selected}
         onToggle={toggle}
@@ -344,8 +367,10 @@ function GongShowPickScreen({ room }) {
   const [gongs, setGongs] = useState([]);
   const isArtistMode = room.pickMode === 'artists';
   const isSpotifyRoom = room.musicSource === 'spotify';
+  const isAuddRoom = room.musicSource === 'audd';
   const pool = isArtistMode ? (room.artistPool || []) : (room.songPool || []);
   const getKey = (item) => isArtistMode ? (item.id || item.name) : (item.id || item.title);
+  const searchLabel = isSpotifyRoom ? ' · Spotify search enabled' : isAuddRoom ? ' · iTunes search enabled' : '';
 
   const mainKeys = new Set(mains.map(getKey));
   const gongKeys = new Set(gongs.map(getKey));
@@ -378,7 +403,7 @@ function GongShowPickScreen({ room }) {
   return (
     <div style={s.wrap}>
       <div style={s.title}>Gong Show Bingo — {isArtistMode ? 'Artist' : 'Song'} mode</div>
-      <div style={s.sub}>Genre: {room.genre}{isSpotifyRoom ? ' · Spotify search enabled' : ''}</div>
+      <div style={s.sub}>Genre: {room.genre}{searchLabel}</div>
 
       {/* Phase tabs */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
@@ -416,7 +441,7 @@ function GongShowPickScreen({ room }) {
       <SearchPicker
         roomCode={room.code}
         pickMode={room.pickMode}
-        isSpotifyRoom={isSpotifyRoom}
+        musicSource={room.musicSource}
         pool={pool}
         selected={currentPicks}
         onToggle={currentToggle}

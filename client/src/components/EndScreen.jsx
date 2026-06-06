@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 
 const GENRES = ['Pop', 'Hip-Hop', 'Rock', 'R&B', 'Country', 'Electronic'];
 
@@ -11,6 +11,14 @@ export default function EndScreen({ room, playerId, isHost, onPlayAgain, onLeave
   const [gameMode, setGameMode] = useState(room ? room.gameMode : 'standard');
   const [blindMode, setBlindMode] = useState(room ? room.blindMode : false);
   const [showSettings, setShowSettings] = useState(false);
+  const [spotifyAvailable, setSpotifyAvailable] = useState(false);
+
+  useEffect(() => {
+    fetch('/api/config')
+      .then(r => r.json())
+      .then(cfg => setSpotifyAvailable(!!cfg.spotifyAvailable))
+      .catch(() => setSpotifyAvailable(false));
+  }, []);
 
   if (!room) return null;
   const sorted = [...room.players].sort((a, b) => b.score - a.score);
@@ -42,6 +50,9 @@ export default function EndScreen({ room, playerId, isHost, onPlayAgain, onLeave
     gameModeSub: { fontSize:11, color:'#64748b' },
     checkRow: { display:'flex', alignItems:'center', justifyContent:'space-between', padding:'10px 12px', borderRadius:8, background:'#0f172a', border:'1px solid #334155', marginBottom:6, cursor:'pointer' },
     checkBox: (on) => ({ width:18, height:18, borderRadius:4, border:`2px solid ${on?'#ef4444':'#475569'}`, background: on?'#ef4444':'transparent', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }),
+    sourceCard: (active) => ({ padding:'10px 12px', borderRadius:8, border: active?'2px solid #6366f1':'1px solid #334155', cursor:'pointer', background: active?'#1a1033':'#0f172a', marginBottom:6, boxShadow: active?'0 0 8px rgba(99,102,241,0.15)':'none' }),
+    sourceTitle: (active) => ({ fontSize:13, fontWeight:700, color: active?'#a5b4fc':'#e2e8f0', marginBottom:2 }),
+    sourceSub: { fontSize:11, color:'#64748b' },
   };
 
   const handlePlayAgain = () => {
@@ -99,10 +110,20 @@ export default function EndScreen({ room, playerId, isHost, onPlayAgain, onLeave
               )}
 
               <label style={s.label}>Music source</label>
-              <div style={s.toggle}>
-                <button style={s.toggleBtn(musicSource==='manual')} onClick={() => setMusicSource('manual')}>Manual</button>
-                <button style={s.toggleBtn(musicSource==='spotify')} onClick={() => setMusicSource('spotify')}>Spotify</button>
+              <div style={s.sourceCard(musicSource==='manual')} onClick={() => setMusicSource('manual')}>
+                <div style={s.sourceTitle(musicSource==='manual')}>Manual</div>
+                <div style={s.sourceSub}>Host marks songs as they play. Works with any music source.</div>
               </div>
+              <div style={s.sourceCard(musicSource==='audd')} onClick={() => setMusicSource('audd')}>
+                <div style={s.sourceTitle(musicSource==='audd')}>🎙 Auto-detect (mic)</div>
+                <div style={s.sourceSub}>Identifies songs via microphone. Works with any music app.</div>
+              </div>
+              {spotifyAvailable && (
+                <div style={s.sourceCard(musicSource==='spotify')} onClick={() => setMusicSource('spotify')}>
+                  <div style={s.sourceTitle(musicSource==='spotify')}>Spotify</div>
+                  <div style={s.sourceSub}>Auto-detects songs from Spotify. Requires Spotify account.</div>
+                </div>
+              )}
 
               <label style={s.label}>Pick mode</label>
               <div style={s.toggle}>
