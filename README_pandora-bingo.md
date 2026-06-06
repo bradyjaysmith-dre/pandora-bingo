@@ -1,6 +1,7 @@
 # Pandora Bingo
 
-> **v10.5.0** — AudD mic-based song detection, iTunes pick search, EndScreen source fix, detection improvements. ✅
+> **v10.6.0** — AudD API key support, on-screen debug log, Android BT speaker fix, circular ref crash fixes. ✅
+> **v10.5.0** — AudD mic detection working: iTunes pick search, EndScreen source fix, 6s clip / 10s interval / retry-on-null. ✅
 > **v10.4.0** — AudD audio fingerprinting source, conditional Spotify visibility, `/api/config` endpoint. ✅
 > **v10.3.0** — Mobile reconnect fix, back button interception with in-game leave modal, artist mode default. ✅
 > **v10.2.0** — Railway deployment: always-on hosting, no sleep timeouts, public URL on Railway infrastructure. ✅
@@ -23,7 +24,7 @@ A real-time multiplayer music prediction game. Pick songs or artists you think w
 - Node.js v18+
 - npm
 - Spotify account + developer credentials (for Spotify source only)
-- AudD API key (optional — keyless mode works for casual use)
+- AudD API key (recommended — get one free at audd.io; keyless mode has a very low daily limit)
 
 ## Setup
 
@@ -48,12 +49,12 @@ SPOTIFY_CLIENT_ID=your_client_id
 SPOTIFY_CLIENT_SECRET=your_client_secret
 SPOTIFY_REDIRECT_URI=http://127.0.0.1:3002/auth/spotify/callback
 SPOTIFY_ENABLED=true
-AUDD_API_KEY=
+AUDD_API_KEY=your_audd_key
 PORT=3002
 ```
 
 - `SPOTIFY_ENABLED` — set to `false` to hide the Spotify source option from all users (useful when Spotify dev mode limits who can auth)
-- `AUDD_API_KEY` — leave blank to use AudD's free keyless tier; add a key from [audd.io](https://audd.io) for higher limits
+- `AUDD_API_KEY` — get a free key at [audd.io](https://audd.io). Free tier: 500 recognitions/month. Keyless mode works but has a very low daily limit — not suitable for regular use
 - Spotify credentials from [developer.spotify.com/dashboard](https://developer.spotify.com/dashboard)
 
 ## Running the Game
@@ -93,7 +94,7 @@ SPOTIFY_CLIENT_ID
 SPOTIFY_CLIENT_SECRET
 SPOTIFY_REDIRECT_URI=https://pandora-bingo.up.railway.app/auth/spotify/callback
 SPOTIFY_ENABLED=true
-AUDD_API_KEY=
+AUDD_API_KEY=your_audd_key
 NODE_ENV=production
 ```
 
@@ -105,14 +106,6 @@ Railway auto-deploys on every push to `main`:
 git add .
 git commit -m "your message"
 git push
-```
-
-#### Fetching latest code from remote
-
-```bash
-git fetch origin
-git status              # see what's changed on remote vs local
-git pull origin main    # merge remote changes into local
 ```
 
 #### Spotify host whitelist note
@@ -185,7 +178,7 @@ Win when: main score ≥ match target AND backup debt fully cleared. On time exp
 
 The host selects a source when creating a room:
 
-**Auto-detect (mic)** — The host's browser captures short audio clips via microphone every 10 seconds and identifies the song via AudD audio fingerprinting. Works with any music app. Best results when the host device is near the speaker. No Spotify account required. Includes iTunes catalog search during the pick phase and a manual fallback grid.
+**Auto-detect (mic)** — The host's browser captures short audio clips via microphone every 10 seconds and identifies the song via AudD audio fingerprinting. Works with any music app. Best results when the host device is near the speaker. No Spotify account required. Includes iTunes catalog search during the pick phase and a manual fallback grid. Multiple simultaneous games on different devices work independently with no interference.
 
 **Spotify** — Server polls the host's Spotify account every 5 seconds. Fully automatic match detection. Requires Spotify OAuth and a whitelisted account (dev mode). Only shown when `SPOTIFY_ENABLED=true`. Includes live Spotify catalog search during the pick phase.
 
@@ -195,10 +188,12 @@ The host selects a source when creating a room:
 
 - Requires browser microphone permission on the host device
 - Play music through a speaker near the host device for best results
+- Uses ambient audio constraints (`echoCancellation: false`, `noiseSuppression: false`, `autoGainControl: false`) to prevent Android from rerouting audio to the phone speaker when mic is active — Bluetooth speakers stay connected
 - A 6-second clip is captured every 10 seconds; on a null result, one automatic retry fires after 3 seconds
 - If detection misses a song, use the manual fallback grid in the Host (Mic) tab
 - The audio input device selector allows choosing from available inputs (useful on desktop with multiple audio devices)
-- AudD keyless mode allows limited daily recognitions for free; add an API key for higher limits
+- AudD free tier: 500 recognitions/month with an API key. Keyless mode has a very low daily limit and is not suitable for regular use
+- An on-screen debug log (tap "Show debug log" in the Host (Mic) tab) shows blob size, AudD response, and errors in real time
 
 ---
 
@@ -236,13 +231,13 @@ Song and artist pools are independent. No artist appears more than once in eithe
 
 **Spotify mode:** now-playing track with album art, auto-detected list, collapsible manual fallback, +5 min, blind mode toggle, end game.
 
-**AudD mode:** audio input selector, mic status (idle/listening/identifying/error), auto-detected log, collapsible manual fallback, +5 min, blind mode toggle, end game.
+**AudD mode:** audio input selector, mic status (idle/listening/identifying/error), on-screen debug log, auto-detected song log, collapsible manual fallback, +5 min, blind mode toggle, end game.
 
 ### Real-time Multiplayer
 
 Built on Socket.io. All game events broadcast instantly — joins, picks confirmed, songs detected, scores, gong events, penalties, wildcards, game over.
 
-Players join via 6-character room code from any device. Railway deployment is fully public — no Tailscale needed.
+Players join via 6-character room code from any device. Railway deployment is fully public — no Tailscale needed. Multiple simultaneous rooms run independently with no interference.
 
 ### Player Limit
 
@@ -294,7 +289,11 @@ Host setup state saved to sessionStorage before OAuth redirect and restored on r
 
 **AudD detection is client-driven** — The host's browser captures audio and POSTs blobs to `/api/audd/identify`. The server proxies to AudD and returns results. The API key never leaves the server. Deduplication via `auddLastTrack` map prevents the same song being scored twice from consecutive clips.
 
+**Ambient audio constraints** — `getUserMedia` is called with `echoCancellation`, `noiseSuppression`, and `autoGainControl` all set to `false`. This tells Android the mic session is ambient capture rather than a voice call, keeping Bluetooth audio routing in media mode and preventing speakers from switching to phone speaker.
+
 **iTunes search for AudD rooms** — `/api/itunes/search` uses Apple's free public search API, no key required. Returns the same shape as Spotify search (`{ id, title, artist, albumArt }` for tracks; `{ id, name }` for artists). The `useSearch` hook in PickScreen routes to Spotify or iTunes based on `room.musicSource`.
+
+**On-screen debug log** — The Host (Mic) tab includes a toggleable debug panel showing blob size, AudD response, and errors in real time. Useful for diagnosing detection issues without needing browser DevTools.
 
 **Server-side Spotify polling** — Keeps access token secure and ensures consistent detection across all player devices. Token auto-refreshes before expiry.
 
@@ -359,18 +358,19 @@ pandora-bingo/
         PickScreen.jsx        Pick flows for all 3 modes; unified useSearch hook (Spotify +
                               iTunes); SearchPicker; SelectedChips; ProgressDots
         GameScreen.jsx        Timer, card, scoreboard, host controls, event toasts;
-                              AudD mic capture loop; audio input device selector;
-                              ID-first client-side match display
+                              AudD mic capture loop with ambient constraints; audio input
+                              device selector; on-screen debug log; ID-first match display
         EndScreen.jsx         Winner, final scores, play again with settings;
                               fetches /api/config for source options; artist mode default
         SpotifyCallback.jsx   OAuth callback handler
     dist/                   Built frontend (generated by npm run build; not committed)
-  railway.json    Railway build and start commands
-  package.json    Root scripts: install:all, build, start, dev
-  start.sh        Local one-command launcher (Vite + Express)
-  .gitignore      Excludes .env, node_modules, client/dist, song-cache.json, leaderboard.json
-  README.md       This file
-  REPLIT.md       Archived Replit deployment guide
+  railway.json              Railway build and start commands
+  package.json              Root scripts: install:all, build, start, dev
+  start.sh                  Local one-command launcher (Vite + Express)
+  archive.sh                Snapshot project to ~/pandora-bingo-milestones/<name>/
+  .gitignore                Excludes .env, node_modules, client/dist, caches
+  README_pandora-bingo.md   This file
+  REPLIT.md                 Archived Replit deployment guide
 ```
 
 ---
@@ -395,10 +395,12 @@ pandora-bingo/
 - v10.3 — Mobile socket reconnect; back button interception; in-game leave modal; artist mode default
 - v10.4 — AudD audio fingerprinting source; SPOTIFY_ENABLED flag; /api/config endpoint; audio input device selector
 - v10.5 — iTunes catalog search in AudD rooms; EndScreen source selector fix; 6s clip / 10s interval / retry-on-null detection improvements; platform-neutral device selector hint text
+- v10.6 — AudD API key support confirmed working; ambient audio constraints for Android BT speaker fix; on-screen debug log in Host (Mic) tab; circular reference crash fixes
 
 ### Upcoming
 
-- Test AudD detection on phone with music playing through a nearby speaker (primary use case)
+- Manual fallback in host controls should show only songs/artists players actually picked, not full genre pool
+- In AudD artist mode, exploit artist-only matching to potentially improve detection accuracy
 - Newlywed targeted guesses — assign a guess to a specific player rather than the field
 - Pre-game countdown timer
 - Password auth for leaderboard (replace name-based identity)
