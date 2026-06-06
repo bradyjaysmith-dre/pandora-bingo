@@ -515,7 +515,6 @@ export default function GameScreen({ room, playerId, isHost, spotifyTokens, nowP
   const sorted = [...room.players].sort((a, b) => b.score - a.score);
   const isArtistMode = room.pickMode === 'artists';
   const isSpotifyMode = room.musicSource === 'spotify';
-  const isAuddMode = room.musicSource === 'audd';
   const isNewlywed = room.gameMode === 'newlywed';
   const isGongShow = room.gameMode === 'gongshow';
 
