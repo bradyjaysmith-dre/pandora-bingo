@@ -8,6 +8,7 @@ const { v4: uuidv4 } = require('uuid');
 const { getGenres, getSongPool, getArtistPool } = require('./songs');
 const game = require('./game');
 const spotify = require('./spotify');
+const audd = require('./audd');
 const lb = require('./leaderboard');
 const { getDynamicPool } = require('./dynamic-songs');
 
@@ -40,6 +41,11 @@ function getAllowedOrigins() {
 // mode to keep Replit previews working without knowing the exact subdomain.
 const isProduction = !!(process.env.REPLIT_DEV_DOMAIN || process.env.REPLIT_DOMAINS || process.env.NODE_ENV === 'production');
 
+// SPOTIFY_ENABLED controls whether the Spotify source option is shown in the UI.
+// Set to 'false' in Railway env vars to hide it from non-whitelisted guests.
+// Defaults to true so local dev keeps working without extra config.
+const SPOTIFY_ENABLED = process.env.SPOTIFY_ENABLED !== 'false';
+
 app.use(cors({
   origin: isProduction ? true : getAllowedOrigins(),
   credentials: true,
@@ -56,6 +62,7 @@ const io = new Server(server, {
 
 const spotifyTokens = new Map();
 const nowPlayingIntervals = new Map();
+const auddIntervals = new Map();
 
 // ── Helper: derive the public base URL for Spotify redirects ─────────────────
 function getPublicBaseUrl(req) {
@@ -71,6 +78,33 @@ function getPublicBaseUrl(req) {
 // ── REST routes ──────────────────────────────────────────────────────────────
 
 app.get('/api/genres', (req, res) => res.json(getGenres()));
+
+// ── App config — tells the client which sources are available ────────────────
+// spotifyAvailable is driven by SPOTIFY_ENABLED env var (default: true).
+// Set SPOTIFY_ENABLED=false on Railway to hide Spotify from all users.
+app.get('/api/config', (req, res) => {
+  res.json({ spotifyAvailable: SPOTIFY_ENABLED });
+});
+
+// ── AudD audio fingerprinting proxy ─────────────────────────────────────────
+// Accepts a raw audio blob (WebM/Opus from the host's MediaRecorder),
+// forwards it to AudD, and returns { title, artist } or { result: null }.
+// The API key never leaves the server.
+app.post('/api/audd/identify', async (req, res) => {
+  const chunks = [];
+  req.on('data', (chunk) => chunks.push(chunk));
+  req.on('end', async () => {
+    try {
+      const audioBuffer = Buffer.concat(chunks);
+      if (!audioBuffer.length) return res.status(400).json({ error: 'Empty audio body' });
+      const result = await audd.identify(audioBuffer);
+      res.json({ result }); // result is { title, artist } or null
+    } catch (err) {
+      console.error('AudD identify error:', err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+});
 
 app.get('/api/leaderboard', (req, res) => {
   res.json(lb.getLeaderboard());
@@ -184,6 +218,7 @@ io.on('connection', (socket) => {
     }
     socket.emit('room:created', { room, playerId: hostId });
     console.log('Room created:', room.code, 'by', hostName, 'mode:', gameMode, 'source:', musicSource);
+    if (musicSource === 'audd') startAuddPolling(room.code);
     // Register host in leaderboard
     lb.getOrCreate(hostName);
     // Kick off async dynamic pool refresh — silent fail
@@ -312,6 +347,9 @@ io.on('connection', (socket) => {
         console.log('Auto-starting Spotify polling for room', roomCode);
         startSpotifyPolling(roomCode);
       }
+      if (startResult.room.musicSource === 'audd') {
+        console.log('AudD source selected for room', roomCode, '— waiting for host mic clips');
+      }
     }
   }
 
@@ -340,6 +378,9 @@ io.on('connection', (socket) => {
     if (startResult.room.musicSource === 'spotify' && spotifyTokens.has(roomCode)) {
       startSpotifyPolling(roomCode);
     }
+    if (startResult.room.musicSource === 'audd') {
+      console.log('AudD source selected for room', roomCode, '— waiting for host mic clips');
+    }
   });
 
   socket.on('host:countdown_done', () => {
@@ -351,6 +392,9 @@ io.on('connection', (socket) => {
     const spotifyRoom = game.getRoom(roomCode);
     if (spotifyRoom && spotifyRoom.musicSource === 'spotify' && spotifyTokens.has(roomCode)) {
       startSpotifyPolling(roomCode);
+    }
+    if (spotifyRoom && spotifyRoom.musicSource === 'audd') {
+      console.log('AudD source selected for room', roomCode, '— waiting for host mic clips');
     }
   });
 
@@ -378,6 +422,25 @@ io.on('connection', (socket) => {
 
   socket.on('host:spotify_stop_polling', () => stopSpotifyPolling(socket.data.roomCode));
 
+  // ── AudD identified track ─────────────────────────────────────────────────
+  // The host client sends this after a successful AudD identification.
+  // We treat it the same as a Spotify-detected track change.
+  socket.on('host:audd_song', ({ title, artist }) => {
+    const { roomCode } = socket.data;
+    if (!title || !artist) return;
+    const room = game.getRoom(roomCode);
+    if (!room || room.phase !== 'playing') return;
+    // Deduplicate: ignore if same song as last identification for this room
+    const lastKey = auddLastTrack.get(roomCode);
+    const thisKey = `${title}|||${artist}`.toLowerCase();
+    if (lastKey === thisKey) return;
+    auddLastTrack.set(roomCode, thisKey);
+    console.log('AudD identified:', title, '|', artist, 'for room', roomCode);
+    const result = game.playSong(roomCode, title, artist, null);
+    if (result.error || result.alreadyPlayed) return;
+    broadcastSongResult(roomCode, result, title);
+  });
+
   // ── Manual song play ─────────────────────────────────────────────────────
   socket.on('host:play_song', ({ songTitle }) => {
     const { roomCode } = socket.data;
@@ -397,6 +460,7 @@ io.on('connection', (socket) => {
   socket.on('host:end_game', () => {
     const { roomCode } = socket.data;
     stopSpotifyPolling(roomCode);
+    stopAuddPolling(roomCode);
     const result = game.endGame(roomCode);
     if (result.error) { socket.emit('error', { message: result.error }); return; }
     recordLeaderboardResults(result.room);
@@ -499,6 +563,29 @@ function stopSpotifyPolling(roomCode) {
   }
 }
 
+// ── AudD server-side deduplication ───────────────────────────────────────────
+// AudD identification is driven by the host client (mic capture + POST to
+// /api/audd/identify), which then emits host:audd_song with the result.
+// The server doesn't poll on its own — but we do track the last identified
+// title here so the client can send clips freely without us double-counting
+// the same song if two clips in a row both resolve to the same track.
+const auddLastTrack = new Map(); // roomCode → last identified title
+
+function startAuddPolling(roomCode) {
+  // Nothing to set up on the server — detection is client-driven.
+  // We just record that this room is in AudD mode so we can clean up on end.
+  auddIntervals.set(roomCode, true);
+  console.log('AudD mode active for room', roomCode);
+}
+
+function stopAuddPolling(roomCode) {
+  if (auddIntervals.has(roomCode)) {
+    auddIntervals.delete(roomCode);
+    auddLastTrack.delete(roomCode);
+    console.log('AudD mode cleared for room', roomCode);
+  }
+}
+
 function scheduleTimer(roomCode) {
   const room = game.getRoom(roomCode);
   if (!room) return;
@@ -509,6 +596,7 @@ function scheduleTimer(roomCode) {
     if (now >= r.endsAt) {
       clearInterval(interval);
       stopSpotifyPolling(roomCode);
+      stopAuddPolling(roomCode);
       const result = game.endGame(roomCode);
       recordLeaderboardResults(result.room);
       io.to(roomCode).emit('game:over', { room: result.room });
