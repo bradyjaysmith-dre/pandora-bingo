@@ -301,6 +301,8 @@ export default function GameScreen({ room, playerId, isHost, spotifyTokens, nowP
   const auddLoopRef = useRef(null);
   const auddActiveRef = useRef(false);
 
+  const isAuddMode = room && room.musicSource === 'audd';
+
   // Enumerate audio input devices. Called on mount and again after first permission grant
   // (browser only exposes device labels after permission is granted).
   const refreshAudioDevices = useCallback(async () => {
@@ -318,8 +320,6 @@ export default function GameScreen({ room, playerId, isHost, spotifyTokens, nowP
   useEffect(() => {
     if (isAuddMode && isHost) refreshAudioDevices();
   }, [isAuddMode, isHost, refreshAudioDevices]);
-
-  const isAuddMode = room && room.musicSource === 'audd';
 
   const captureAndIdentifyRef = useRef(null);
 
