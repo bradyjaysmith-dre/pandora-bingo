@@ -321,6 +321,8 @@ export default function GameScreen({ room, playerId, isHost, spotifyTokens, nowP
 
   const isAuddMode = room && room.musicSource === 'audd';
 
+  const captureAndIdentifyRef = useRef(null);
+
   // Capture one ~6-second clip, POST to /api/audd/identify, emit result.
   // On a null result, retries once after 3 seconds before giving up.
   const captureAndIdentify = useCallback(async (isRetry = false) => {
@@ -342,7 +344,7 @@ export default function GameScreen({ room, playerId, isHost, spotifyTokens, nowP
       await new Promise((resolve) => {
         recorder.onstop = resolve;
         recorder.start();
-        setTimeout(() => recorder.stop(), 6000); // 6s for better fingerprint signal
+        setTimeout(() => recorder.stop(), 6000);
       });
 
       if (!auddActiveRef.current) return;
@@ -371,10 +373,10 @@ export default function GameScreen({ room, playerId, isHost, spotifyTokens, nowP
         socket.emit('host:audd_song', { title, artist });
         setAuddStatus('listening');
       } else {
-        // No match — retry once after 3 seconds if this wasn't already a retry
+        // No match — retry once after 3 seconds via ref to avoid circular dependency
         if (!isRetry) {
           setAuddStatus('listening');
-          setTimeout(() => captureAndIdentify(true), 3000);
+          setTimeout(() => captureAndIdentifyRef.current && captureAndIdentifyRef.current(true), 3000);
         } else {
           setAuddLastResult(null);
           setAuddStatus('listening');
@@ -387,6 +389,9 @@ export default function GameScreen({ room, playerId, isHost, spotifyTokens, nowP
       }
     }
   }, []);
+
+  // Keep ref in sync with latest version of the function
+  useEffect(() => { captureAndIdentifyRef.current = captureAndIdentify; }, [captureAndIdentify]);
 
   // Start mic stream + polling loop
   const startAuddListening = useCallback(async () => {
