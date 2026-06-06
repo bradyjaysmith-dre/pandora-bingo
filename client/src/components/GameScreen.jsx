@@ -321,7 +321,13 @@ export default function GameScreen({ room, playerId, isHost, spotifyTokens, nowP
     if (isAuddMode && isHost) refreshAudioDevices();
   }, [isAuddMode, isHost, refreshAudioDevices]);
 
-  const captureAndIdentifyRef = useRef(null);
+  const [auddDebugLog, setAuddDebugLog] = useState([]); // on-screen debug entries
+  const [showDebug, setShowDebug] = useState(false);
+
+  const auddDebug = (msg) => {
+    const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    setAuddDebugLog(prev => [...prev.slice(-30), `${time} ${msg}`]);
+  };
 
   // Capture one ~6-second clip, POST to /api/audd/identify, emit result.
   // On a null result, retries once after 3 seconds before giving up.
@@ -329,7 +335,7 @@ export default function GameScreen({ room, playerId, isHost, spotifyTokens, nowP
     if (!auddActiveRef.current) return;
     try {
       const stream = auddStreamRef.current;
-      if (!stream) return;
+      if (!stream) { auddDebug('❌ No stream'); return; }
 
       const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
         ? 'audio/webm;codecs=opus'
@@ -337,6 +343,7 @@ export default function GameScreen({ room, playerId, isHost, spotifyTokens, nowP
           ? 'audio/webm'
           : 'audio/ogg;codecs=opus';
 
+      auddDebug(`🎙 Recording 6s (${isRetry ? 'retry' : 'new'})…`);
       const recorder = new MediaRecorder(stream, { mimeType });
       const chunks = [];
       recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
@@ -348,11 +355,13 @@ export default function GameScreen({ room, playerId, isHost, spotifyTokens, nowP
       });
 
       if (!auddActiveRef.current) return;
-      setAuddStatus('identifying');
 
       const blob = new Blob(chunks, { type: mimeType });
-      const arrayBuf = await blob.arrayBuffer();
+      const kb = (blob.size / 1024).toFixed(1);
+      auddDebug(`📦 Blob: ${kb} KB — sending to AudD…`);
+      setAuddStatus('identifying');
 
+      const arrayBuf = await blob.arrayBuffer();
       const res = await fetch('/api/audd/identify', {
         method: 'POST',
         headers: { 'Content-Type': mimeType },
@@ -364,6 +373,7 @@ export default function GameScreen({ room, playerId, isHost, spotifyTokens, nowP
 
       if (data.result && data.result.title && data.result.artist) {
         const { title, artist } = data.result;
+        auddDebug(`✅ Match: ${artist} — ${title}`);
         setAuddLastResult({ title, artist });
         setAuddLog(prev => {
           const last = prev[prev.length - 1];
@@ -373,7 +383,7 @@ export default function GameScreen({ room, playerId, isHost, spotifyTokens, nowP
         socket.emit('host:audd_song', { title, artist });
         setAuddStatus('listening');
       } else {
-        // No match — retry once after 3 seconds via ref to avoid circular dependency
+        auddDebug(`🔍 No match${!isRetry ? ' — retrying in 3s' : ' (gave up)'}`);
         if (!isRetry) {
           setAuddStatus('listening');
           setTimeout(() => captureAndIdentifyRef.current && captureAndIdentifyRef.current(true), 3000);
@@ -383,12 +393,10 @@ export default function GameScreen({ room, playerId, isHost, spotifyTokens, nowP
         }
       }
     } catch (err) {
-      if (auddActiveRef.current) {
-        console.error('AudD capture error:', err);
-        setAuddStatus('listening');
-      }
+      auddDebug(`❌ Error: ${err.message}`);
+      if (auddActiveRef.current) setAuddStatus('listening');
     }
-  }, []);
+  }, []); // eslint-disable-line
 
   // Keep ref in sync with latest version of the function
   useEffect(() => { captureAndIdentifyRef.current = captureAndIdentify; }, [captureAndIdentify]);
@@ -417,7 +425,7 @@ export default function GameScreen({ room, playerId, isHost, spotifyTokens, nowP
       auddStreamRef.current = stream;
       auddActiveRef.current = true;
       setAuddStatus('listening');
-      // Re-enumerate now that permission is granted — labels will be populated
+      auddDebug(`✅ Mic open — capturing every 10s`);
       refreshAudioDevices();
 
       // Run immediately, then every 10 seconds
@@ -837,7 +845,28 @@ export default function GameScreen({ room, playerId, isHost, spotifyTokens, nowP
                 )}
               </div>
 
-              {/* ── AudD detected songs log ── */}
+              {/* ── Debug log ── */}
+              <div style={{marginBottom:10}}>
+                <button
+                  onClick={() => setShowDebug(v => !v)}
+                  style={{fontSize:11,color:GC.muted,background:'none',border:'none',cursor:'pointer',padding:0,textDecoration:'underline'}}
+                >
+                  {showDebug ? 'Hide debug log ▲' : 'Show debug log ▼'}
+                </button>
+                {showDebug && (
+                  <div style={{
+                    marginTop:6, padding:'8px 10px', borderRadius:8,
+                    background:'#0a0f1e', border:`1px solid ${GC.border}`,
+                    fontFamily:'monospace', fontSize:11, color:'#94a3b8',
+                    maxHeight:180, overflowY:'auto', lineHeight:1.6,
+                  }}>
+                    {auddDebugLog.length === 0
+                      ? <span style={{color:GC.muted}}>No events yet</span>
+                      : [...auddDebugLog].reverse().map((line, i) => <div key={i}>{line}</div>)
+                    }
+                  </div>
+                )}
+              </div>
               {auddLog.length > 0 && (
                 <div style={{marginBottom:12}}>
                   <div style={{fontSize:12,color:'#64748b',marginBottom:6}}>Auto-detected this session:</div>
