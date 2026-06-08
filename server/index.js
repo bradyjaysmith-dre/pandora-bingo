@@ -241,7 +241,10 @@ io.on('connection', (socket) => {
     socket.data.roomCode = room.code;
     socket.data.playerId = hostId;
     socket.data.isHost = true;
-    if (spotifyTokens.has(socket.id)) {
+    // Stop any lingering Spotify polling from a previous room on this socket
+    stopSpotifyPolling(room.code);
+    // Only associate the Spotify token if this room actually uses Spotify
+    if (musicSource === 'spotify' && spotifyTokens.has(socket.id)) {
       spotifyTokens.set(room.code, spotifyTokens.get(socket.id));
       spotifyTokens.delete(socket.id);
       console.log('Migrated Spotify token to room', room.code);
@@ -446,8 +449,11 @@ io.on('connection', (socket) => {
   });
 
   socket.on('host:spotify_start_polling', () => {
-    console.log('host:spotify_start_polling received for room', socket.data.roomCode);
-    startSpotifyPolling(socket.data.roomCode);
+    const { roomCode } = socket.data;
+    const room = game.getRoom(roomCode);
+    if (!room || room.musicSource !== 'spotify') return;
+    console.log('host:spotify_start_polling received for room', roomCode);
+    startSpotifyPolling(roomCode);
   });
 
   socket.on('host:spotify_stop_polling', () => stopSpotifyPolling(socket.data.roomCode));
@@ -537,6 +543,8 @@ function broadcastSongResult(roomCode, result, songTitle) {
 
 function startSpotifyPolling(roomCode) {
   if (nowPlayingIntervals.has(roomCode)) return;
+  const roomCheck = game.getRoom(roomCode);
+  if (!roomCheck || roomCheck.musicSource !== 'spotify') return;
   let lastTrackTitle = null;
   const interval = setInterval(async () => {
     const room = game.getRoom(roomCode);
