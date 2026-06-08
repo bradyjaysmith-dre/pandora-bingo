@@ -300,6 +300,7 @@ export default function GameScreen({ room, playerId, isHost, spotifyTokens, nowP
   const auddStreamRef = useRef(null);
   const auddLoopRef = useRef(null);
   const auddActiveRef = useRef(false);
+  const auddPausedRef = useRef(false); // true during 60s post-match cooldown
 
   const isAuddMode = room && room.musicSource === 'audd';
 
@@ -323,6 +324,33 @@ export default function GameScreen({ room, playerId, isHost, spotifyTokens, nowP
 
   const [auddDebugLog, setAuddDebugLog] = useState([]);
   const [showDebug, setShowDebug] = useState(false);
+  const [showStats, setShowStats] = useState(false);
+
+  // ── AudD stats ───────────────────────────────────────────────────────────
+  // Per-game resets when a new game starts. Cumulative persists in localStorage.
+  const STATS_KEY = 'pandora_audd_stats';
+  const loadCumulative = () => {
+    try { return JSON.parse(localStorage.getItem(STATS_KEY)) || { calls: 0, matches: 0, nulls: 0, retries: 0 }; }
+    catch { return { calls: 0, matches: 0, nulls: 0, retries: 0 }; }
+  };
+  const [gameStats, setGameStats] = useState({ calls: 0, matches: 0, nulls: 0, retries: 0 });
+  const [cumStats, setCumStats] = useState(loadCumulative);
+
+  const recordStat = useCallback((type) => {
+    setGameStats(prev => ({ ...prev, [type]: prev[type] + 1 }));
+    setCumStats(prev => {
+      const next = { ...prev, [type]: prev[type] + 1 };
+      try { localStorage.setItem(STATS_KEY, JSON.stringify(next)); } catch {}
+      return next;
+    });
+  }, []);
+
+  // Reset per-game stats when game phase changes to playing
+  useEffect(() => {
+    if (room && room.phase === 'playing') {
+      setGameStats({ calls: 0, matches: 0, nulls: 0, retries: 0 });
+    }
+  }, [room && room.phase]); // eslint-disable-line
 
   const auddDebug = (msg) => {
     const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
@@ -335,6 +363,10 @@ export default function GameScreen({ room, playerId, isHost, spotifyTokens, nowP
   // On a null result, retries once after 3 seconds before giving up.
   const captureAndIdentify = useCallback(async (isRetry = false) => {
     if (!auddActiveRef.current) return;
+    if (auddPausedRef.current && !isRetry) {
+      auddDebug('⏸ Paused — waiting for cooldown');
+      return;
+    }
     try {
       const stream = auddStreamRef.current;
       if (!stream) { auddDebug('❌ No stream'); return; }
@@ -346,6 +378,7 @@ export default function GameScreen({ room, playerId, isHost, spotifyTokens, nowP
           : 'audio/ogg;codecs=opus';
 
       auddDebug(`🎙 Recording 6s (${isRetry ? 'retry' : 'new'})…`);
+      if (isRetry) recordStat('retries');
       const recorder = new MediaRecorder(stream, { mimeType });
       const chunks = [];
       recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
@@ -361,6 +394,7 @@ export default function GameScreen({ room, playerId, isHost, spotifyTokens, nowP
       const blob = new Blob(chunks, { type: mimeType });
       const kb = (blob.size / 1024).toFixed(1);
       auddDebug(`📦 Blob: ${kb} KB — sending to AudD…`);
+      recordStat('calls');
       setAuddStatus('identifying');
 
       const arrayBuf = await blob.arrayBuffer();
@@ -376,6 +410,7 @@ export default function GameScreen({ room, playerId, isHost, spotifyTokens, nowP
       if (data.result && data.result.title && data.result.artist) {
         const { title, artist } = data.result;
         auddDebug(`✅ Match: ${artist} — ${title}`);
+        recordStat('matches');
         setAuddLastResult({ title, artist });
         setAuddLog(prev => {
           const last = prev[prev.length - 1];
@@ -384,7 +419,14 @@ export default function GameScreen({ room, playerId, isHost, spotifyTokens, nowP
         });
         socket.emit('host:audd_song', { title, artist });
         setAuddStatus('listening');
+        auddPausedRef.current = true;
+        auddDebug('⏸ Match found — pausing 60s before next capture');
+        setTimeout(() => {
+          auddPausedRef.current = false;
+          auddDebug('▶ Resuming captures');
+        }, 60000);
       } else {
+        recordStat('nulls');
         auddDebug(`🔍 No match${!isRetry ? ' — retrying in 3s' : ' (gave up)'}`);
         if (!isRetry) {
           setAuddStatus('listening');
@@ -398,7 +440,7 @@ export default function GameScreen({ room, playerId, isHost, spotifyTokens, nowP
       auddDebug(`❌ Error: ${err.message}`);
       if (auddActiveRef.current) setAuddStatus('listening');
     }
-  }, []); // eslint-disable-line
+  }, [recordStat]); // eslint-disable-line
 
   // Keep ref in sync with latest version of the function
   useEffect(() => { captureAndIdentifyRef.current = captureAndIdentify; }, [captureAndIdentify]);
@@ -430,9 +472,9 @@ export default function GameScreen({ room, playerId, isHost, spotifyTokens, nowP
       auddDebug(`✅ Mic open — capturing every 10s`);
       refreshAudioDevices();
 
-      // Run immediately, then every 10 seconds
+      // Run immediately, then every 15 seconds
       captureAndIdentify();
-      auddLoopRef.current = setInterval(captureAndIdentify, 10000);
+      auddLoopRef.current = setInterval(captureAndIdentify, 15000);
     } catch (err) {
       setAuddStatus('error');
       if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
@@ -448,6 +490,7 @@ export default function GameScreen({ room, playerId, isHost, spotifyTokens, nowP
   // Stop mic stream + polling loop
   const stopAuddListening = useCallback(() => {
     auddActiveRef.current = false;
+    auddPausedRef.current = false;
     if (auddLoopRef.current) { clearInterval(auddLoopRef.current); auddLoopRef.current = null; }
     if (auddStreamRef.current) {
       auddStreamRef.current.getTracks().forEach(t => t.stop());
@@ -815,7 +858,7 @@ export default function GameScreen({ room, playerId, isHost, spotifyTokens, nowP
                   }}>
                     {auddStatus === 'idle' && 'Microphone not started'}
                     {auddStatus === 'requesting' && 'Requesting mic permission…'}
-                    {auddStatus === 'listening' && 'Listening — captures every 10 seconds'}
+                    {auddStatus === 'listening' && 'Listening — captures every 15 seconds'}
                     {auddStatus === 'identifying' && 'Identifying song…'}
                     {auddStatus === 'error' && 'Microphone error'}
                   </div>
@@ -866,6 +909,60 @@ export default function GameScreen({ room, playerId, isHost, spotifyTokens, nowP
                       ? <span style={{color:GC.muted}}>No events yet</span>
                       : [...auddDebugLog].reverse().map((line, i) => <div key={i}>{line}</div>)
                     }
+                  </div>
+                )}
+              </div>
+
+              {/* ── AudD stats panel ── */}
+              <div style={{marginBottom:10}}>
+                <button
+                  onClick={() => setShowStats(v => !v)}
+                  style={{fontSize:11,color:GC.muted,background:'none',border:'none',cursor:'pointer',padding:0,textDecoration:'underline'}}
+                >
+                  {showStats ? 'Hide stats ▲' : 'Show stats ▼'}
+                </button>
+                {showStats && (
+                  <div style={{marginTop:6,padding:'10px 12px',borderRadius:8,background:'#0a0f1e',border:`1px solid ${GC.border}`}}>
+                    {/* Per-game */}
+                    <div style={{fontSize:11,fontWeight:700,color:GC.indigo,textTransform:'uppercase',letterSpacing:'0.07em',marginBottom:6}}>This game</div>
+                    <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'4px 16px',marginBottom:12}}>
+                      {[
+                        ['API calls', gameStats.calls],
+                        ['Matches', gameStats.matches],
+                        ['No match', gameStats.nulls],
+                        ['Retries', gameStats.retries],
+                      ].map(([label, val]) => (
+                        <div key={label} style={{display:'flex',justifyContent:'space-between',fontSize:12}}>
+                          <span style={{color:GC.muted}}>{label}</span>
+                          <span style={{color:GC.text,fontWeight:700}}>{val}</span>
+                        </div>
+                      ))}
+                    </div>
+                    {/* Cumulative */}
+                    <div style={{fontSize:11,fontWeight:700,color:GC.cyan,textTransform:'uppercase',letterSpacing:'0.07em',marginBottom:6}}>All time (this device)</div>
+                    <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'4px 16px',marginBottom:8}}>
+                      {[
+                        ['API calls', cumStats.calls],
+                        ['Matches', cumStats.matches],
+                        ['No match', cumStats.nulls],
+                        ['Retries', cumStats.retries],
+                      ].map(([label, val]) => (
+                        <div key={label} style={{display:'flex',justifyContent:'space-between',fontSize:12}}>
+                          <span style={{color:GC.muted}}>{label}</span>
+                          <span style={{color:GC.text,fontWeight:700}}>{val}</span>
+                        </div>
+                      ))}
+                    </div>
+                    <button
+                      onClick={() => {
+                        const reset = { calls:0, matches:0, nulls:0, retries:0 };
+                        setCumStats(reset);
+                        try { localStorage.setItem(STATS_KEY, JSON.stringify(reset)); } catch {}
+                      }}
+                      style={{fontSize:11,color:'#f87171',background:'none',border:'none',cursor:'pointer',padding:0,textDecoration:'underline'}}
+                    >
+                      Reset all-time stats
+                    </button>
                   </div>
                 )}
               </div>
