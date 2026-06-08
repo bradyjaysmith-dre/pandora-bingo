@@ -1,7 +1,7 @@
 # Pandora Bingo
 
-> **v10.6.0** — AudD API key support, on-screen debug log, Android BT speaker fix, circular ref crash fixes. ✅
-> **v10.5.0** — AudD mic detection working: iTunes pick search, EndScreen source fix, 6s clip / 10s interval / retry-on-null. ✅
+> **v10.6.0** — AudD fully operational: 15s interval, 60s post-match cooldown, per-game + cumulative stats panel, Spotify polling leak fixed, Railway build fix. ✅
+> **v10.5.0** — AudD mic detection working: iTunes pick search, EndScreen source fix, 6s clip / retry-on-null. ✅
 > **v10.4.0** — AudD audio fingerprinting source, conditional Spotify visibility, `/api/config` endpoint. ✅
 > **v10.3.0** — Mobile reconnect fix, back button interception with in-game leave modal, artist mode default. ✅
 > **v10.2.0** — Railway deployment: always-on hosting, no sleep timeouts, public URL on Railway infrastructure. ✅
@@ -24,7 +24,7 @@ A real-time multiplayer music prediction game. Pick songs or artists you think w
 - Node.js v18+
 - npm
 - Spotify account + developer credentials (for Spotify source only)
-- AudD API key (recommended — get one free at audd.io; keyless mode has a very low daily limit)
+- AudD API key (recommended — get one at audd.io; Indie plan $5/month for 1,000 requests; keyless mode has a very low daily limit)
 
 ## Setup
 
@@ -54,7 +54,7 @@ PORT=3002
 ```
 
 - `SPOTIFY_ENABLED` — set to `false` to hide the Spotify source option from all users (useful when Spotify dev mode limits who can auth)
-- `AUDD_API_KEY` — get a free key at [audd.io](https://audd.io). Free tier: 500 recognitions/month. Keyless mode works but has a very low daily limit — not suitable for regular use
+- `AUDD_API_KEY` — get a key at [audd.io](https://audd.io). Indie plan: $5/month for 1,000 requests. Keyless mode has a very low daily limit — not suitable for regular use
 - Spotify credentials from [developer.spotify.com/dashboard](https://developer.spotify.com/dashboard)
 
 ## Running the Game
@@ -178,7 +178,7 @@ Win when: main score ≥ match target AND backup debt fully cleared. On time exp
 
 The host selects a source when creating a room:
 
-**Auto-detect (mic)** — The host's browser captures short audio clips via microphone every 10 seconds and identifies the song via AudD audio fingerprinting. Works with any music app. Best results when the host device is near the speaker. No Spotify account required. Includes iTunes catalog search during the pick phase and a manual fallback grid. Multiple simultaneous games on different devices work independently with no interference.
+**Auto-detect (mic)** — The host's browser captures short audio clips via microphone every 15 seconds and identifies the song via AudD audio fingerprinting. Works with any music app. Best results when the host device is near the speaker. No Spotify account required. Includes iTunes catalog search during the pick phase and a manual fallback grid. Multiple simultaneous games on different devices work independently with no interference.
 
 **Spotify** — Server polls the host's Spotify account every 5 seconds. Fully automatic match detection. Requires Spotify OAuth and a whitelisted account (dev mode). Only shown when `SPOTIFY_ENABLED=true`. Includes live Spotify catalog search during the pick phase.
 
@@ -188,12 +188,14 @@ The host selects a source when creating a room:
 
 - Requires browser microphone permission on the host device
 - Play music through a speaker near the host device for best results
-- Uses ambient audio constraints (`echoCancellation: false`, `noiseSuppression: false`, `autoGainControl: false`) to prevent Android from rerouting audio to the phone speaker when mic is active — Bluetooth speakers stay connected
-- A 6-second clip is captured every 10 seconds; on a null result, one automatic retry fires after 3 seconds
+- Uses ambient audio constraints (`echoCancellation: false`, `noiseSuppression: false`, `autoGainControl: false`) to prevent Android from rerouting audio to the phone speaker — Bluetooth speakers stay connected
+- Captures a 6-second clip every 15 seconds; on a null result, one automatic retry fires after 3 seconds
+- After a successful match, polling pauses for 60 seconds before resuming — conserves API calls since the same song is still playing
+- AudD Indie plan: $5/month for 1,000 requests. At ~1–2 calls per song identified, this covers many game nights per month
 - If detection misses a song, use the manual fallback grid in the Host (Mic) tab
 - The audio input device selector allows choosing from available inputs (useful on desktop with multiple audio devices)
-- AudD free tier: 500 recognitions/month with an API key. Keyless mode has a very low daily limit and is not suitable for regular use
-- An on-screen debug log (tap "Show debug log" in the Host (Mic) tab) shows blob size, AudD response, and errors in real time
+- An on-screen debug log (tap "Show debug log") shows blob size, AudD response, and errors in real time
+- A stats panel (tap "Show stats") tracks API calls, matches, nulls, and retries per game and cumulatively across all sessions on that device
 
 ---
 
@@ -231,7 +233,7 @@ Song and artist pools are independent. No artist appears more than once in eithe
 
 **Spotify mode:** now-playing track with album art, auto-detected list, collapsible manual fallback, +5 min, blind mode toggle, end game.
 
-**AudD mode:** audio input selector, mic status (idle/listening/identifying/error), on-screen debug log, auto-detected song log, collapsible manual fallback, +5 min, blind mode toggle, end game.
+**AudD mode:** audio input selector, mic status (idle/listening/identifying/error), on-screen debug log, stats panel, auto-detected song log, collapsible manual fallback, +5 min, blind mode toggle, end game.
 
 ### Real-time Multiplayer
 
@@ -289,11 +291,15 @@ Host setup state saved to sessionStorage before OAuth redirect and restored on r
 
 **AudD detection is client-driven** — The host's browser captures audio and POSTs blobs to `/api/audd/identify`. The server proxies to AudD and returns results. The API key never leaves the server. Deduplication via `auddLastTrack` map prevents the same song being scored twice from consecutive clips.
 
+**AudD polling conservation** — After a successful identification, the client pauses captures for 60 seconds. A song typically plays for 3–4 minutes; there's no value in burning API calls on clips of the same track. Combined with the 15-second interval and retry-on-null logic, a typical game night uses 20–40 calls against a monthly budget of 1,000.
+
 **Ambient audio constraints** — `getUserMedia` is called with `echoCancellation`, `noiseSuppression`, and `autoGainControl` all set to `false`. This tells Android the mic session is ambient capture rather than a voice call, keeping Bluetooth audio routing in media mode and preventing speakers from switching to phone speaker.
+
+**Spotify polling source-gated** — `startSpotifyPolling` checks `room.musicSource === 'spotify'` before starting and refuses to run in AudD or manual rooms. The Spotify token is only migrated to a room if that room uses Spotify. This prevents Spotify API calls from leaking into AudD sessions.
 
 **iTunes search for AudD rooms** — `/api/itunes/search` uses Apple's free public search API, no key required. Returns the same shape as Spotify search (`{ id, title, artist, albumArt }` for tracks; `{ id, name }` for artists). The `useSearch` hook in PickScreen routes to Spotify or iTunes based on `room.musicSource`.
 
-**On-screen debug log** — The Host (Mic) tab includes a toggleable debug panel showing blob size, AudD response, and errors in real time. Useful for diagnosing detection issues without needing browser DevTools.
+**On-screen debug log and stats panel** — The Host (Mic) tab includes a toggleable debug panel (blob size, AudD response, errors) and a stats panel (API calls, matches, nulls, retries — per game and cumulative). Stats persist in localStorage on the host device.
 
 **Server-side Spotify polling** — Keeps access token secure and ensures consistent detection across all player devices. Token auto-refreshes before expiry.
 
@@ -325,6 +331,8 @@ Host setup state saved to sessionStorage before OAuth redirect and restored on r
 
 **Single-port production** — Express serves Vite-built frontend from `client/dist`. Socket.io and all API routes share the same origin.
 
+**Vite in dependencies** — `vite` and `@vitejs/plugin-react` are in `dependencies` (not `devDependencies`) in `client/package.json`. Railway/Nixpacks sets `NODE_ENV=production` during build, which causes npm to skip devDependencies — moving them to dependencies ensures the build succeeds.
+
 ---
 
 ## Project Structure
@@ -333,7 +341,8 @@ Host setup state saved to sessionStorage before OAuth redirect and restored on r
 pandora-bingo/
   server/
     index.js           Express + Socket.io entry; /api/config, /api/audd/identify,
-                       /api/itunes/search, /api/spotify/search; serves client/dist in prod
+                       /api/itunes/search, /api/spotify/search; serves client/dist in prod;
+                       Spotify polling source-gated to prevent leaking into AudD rooms
     game.js            Room state, player management, scoring; all game modes;
                        ID-first match detection with string fallback
     audd.js            AudD proxy — multipart POST to api.audd.io; API key server-side only
@@ -358,11 +367,14 @@ pandora-bingo/
         PickScreen.jsx        Pick flows for all 3 modes; unified useSearch hook (Spotify +
                               iTunes); SearchPicker; SelectedChips; ProgressDots
         GameScreen.jsx        Timer, card, scoreboard, host controls, event toasts;
-                              AudD mic capture loop with ambient constraints; audio input
-                              device selector; on-screen debug log; ID-first match display
+                              AudD mic capture loop with ambient constraints; 15s interval;
+                              60s post-match cooldown; audio input device selector;
+                              on-screen debug log; per-game + cumulative stats panel
         EndScreen.jsx         Winner, final scores, play again with settings;
                               fetches /api/config for source options; artist mode default
         SpotifyCallback.jsx   OAuth callback handler
+    package.json            vite + @vitejs/plugin-react in dependencies (not devDependencies)
+                            so Railway build succeeds with NODE_ENV=production
     dist/                   Built frontend (generated by npm run build; not committed)
   railway.json              Railway build and start commands
   package.json              Root scripts: install:all, build, start, dev
@@ -394,8 +406,8 @@ pandora-bingo/
 - v10.2 — Railway migration; always-on hosting; auto-deploy on push
 - v10.3 — Mobile socket reconnect; back button interception; in-game leave modal; artist mode default
 - v10.4 — AudD audio fingerprinting source; SPOTIFY_ENABLED flag; /api/config endpoint; audio input device selector
-- v10.5 — iTunes catalog search in AudD rooms; EndScreen source selector fix; 6s clip / 10s interval / retry-on-null detection improvements; platform-neutral device selector hint text
-- v10.6 — AudD API key support confirmed working; ambient audio constraints for Android BT speaker fix; on-screen debug log in Host (Mic) tab; circular reference crash fixes
+- v10.5 — iTunes catalog search in AudD rooms; EndScreen source selector fix; 6s clip / retry-on-null; platform-neutral device selector hint text
+- v10.6 — AudD fully operational: 15s polling interval; 60s post-match cooldown; per-game + cumulative stats panel; Spotify polling leak fixed (source-gated); Android BT speaker fix (ambient constraints); circular ref crash fixes; Railway build fix (vite moved to dependencies)
 
 ### Upcoming
 
