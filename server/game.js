@@ -12,10 +12,11 @@ function makePlayer(id, name) {
     backups: [], guesses: [], backupDebt: 0, guessHits: 0, wildcards: [],
     // Gong Show
     gongs: [], revealedPicks: [], revealedGongs: [],
+    // DJ Battle (host only uses hostScore; players use score)
   };
 }
 
-function createRoom({ hostId, hostName, genre, matchTarget, timeLimit, pickMode, musicSource, gameMode, blindMode }) {
+function createRoom({ hostId, hostName, genre, matchTarget, timeLimit, pickMode, musicSource, gameMode, blindMode, djPickCount, playlistName, playlistHint }) {
   const code = Math.random().toString(36).slice(2, 8).toUpperCase();
   const room = {
     code, hostId, genre, matchTarget, timeLimit,
@@ -23,6 +24,11 @@ function createRoom({ hostId, hostName, genre, matchTarget, timeLimit, pickMode,
     musicSource: musicSource || 'manual',
     gameMode: gameMode || 'standard',
     blindMode: blindMode || false,
+    // DJ Battle fields
+    djPickCount: djPickCount || 5,
+    playlistName: playlistName || '',
+    playlistHint: playlistHint || '',
+    hostScore: 0, // DJ Battle: host points (songs nobody guessed)
     phase: 'lobby',
     players: [makePlayer(hostId, hostName)],
     songPool: getSongPool(genre),
@@ -70,7 +76,7 @@ function playerDisconnect(code, playerId) {
   if (player) player.connected = false;
 }
 
-function resetRoom(code, { genre, matchTarget, timeLimit, pickMode, musicSource, gameMode, blindMode }) {
+function resetRoom(code, { genre, matchTarget, timeLimit, pickMode, musicSource, gameMode, blindMode, djPickCount, playlistName, playlistHint }) {
   const room = getRoom(code);
   if (!room) return { error: 'Room not found' };
   room.genre = genre;
@@ -80,6 +86,10 @@ function resetRoom(code, { genre, matchTarget, timeLimit, pickMode, musicSource,
   room.musicSource = musicSource || 'manual';
   room.gameMode = gameMode || 'standard';
   room.blindMode = blindMode || false;
+  room.djPickCount = djPickCount || 5;
+  room.playlistName = playlistName || '';
+  room.playlistHint = playlistHint || '';
+  room.hostScore = 0;
   room.phase = 'lobby';
   room.songPool = getSongPool(genre);
   room.artistPool = getArtistPool(genre);
@@ -240,6 +250,7 @@ function playSong(code, songTitle, songArtist, songData) {
 
   if (room.gameMode === 'newlywed') return playSongNewlywed(room, song);
   if (room.gameMode === 'gongshow') return playSongGongShow(room, song);
+  if (room.gameMode === 'djbattle') return playSongDJBattle(room, song);
 
   recalcScores(room);
   const winner = room.players.find(p => p.confirmed && p.score >= room.matchTarget);
@@ -326,6 +337,56 @@ function playSongGongShow(room, song) {
   return { room, winner: winner || null, gongEvents: events };
 }
 
+// ─── DJ Battle scoring ────────────────────────────────────────────────────────
+// Players are all non-host confirmed players.
+// When a song plays:
+//   - Any player who picked that artist scores +1 (independently; duplicates both score)
+//   - If NO player picked that artist, the host scores +1
+// Winner = first to reach matchTarget, or highest score when time expires.
+// Host winning means the players failed to predict enough of the playlist.
+function playSongDJBattle(room, song) {
+  // Find confirmed non-host players who picked this artist/song
+  const scoringPlayers = room.players.filter(p =>
+    p.confirmed &&
+    p.id !== room.hostId &&
+    (p.picks || []).some(pick => songMatchesPick(song, pick, room.pickMode))
+  );
+
+  const djEvents = [];
+
+  if (scoringPlayers.length > 0) {
+    // Players blocked the host — they each score
+    scoringPlayers.forEach(p => {
+      p.score += 1;
+      djEvents.push({ type: 'player_point', playerId: p.id, playerName: p.name });
+    });
+  } else {
+    // Nobody guessed it — host scores
+    room.hostScore = (room.hostScore || 0) + 1;
+    djEvents.push({ type: 'host_point' });
+  }
+
+  // Check for winner: first player or host to reach matchTarget
+  const playerWinner = room.players.find(p =>
+    p.confirmed && p.id !== room.hostId && p.score >= room.matchTarget
+  );
+  const hostWon = room.hostScore >= room.matchTarget;
+
+  if (playerWinner) {
+    room.winner = playerWinner;
+    room.phase = 'ended';
+  } else if (hostWon) {
+    // Host wins — represent as a synthetic winner object so existing end-game
+    // machinery (leaderboard, game:over broadcast) works without changes.
+    // We signal host victory with winner.isHost = true so the UI can handle it.
+    const host = room.players.find(p => p.id === room.hostId);
+    room.winner = { ...host, isHostWin: true };
+    room.phase = 'ended';
+  }
+
+  return { room, winner: room.winner || null, djEvents };
+}
+
 function addTime(code, minutes) {
   const room = getRoom(code);
   if (!room) return { error: 'Room not found' };
@@ -338,6 +399,9 @@ function endGame(code) {
   if (!room) return { error: 'Room not found' };
   room.phase = 'ended';
   if (!room.winner) {
+    if (room.gameMode === 'djbattle') {
+      return endGameDJBattle(room);
+    }
     const eff = p => {
       if (!p.confirmed) return -Infinity;
       if (room.gameMode !== 'newlywed') return p.score;
@@ -355,6 +419,44 @@ function endGame(code) {
       room.tiedPlayers = tied.map(p => p.name);
     }
   }
+  return { room };
+}
+
+function endGameDJBattle(room) {
+  // Compare all player scores against host score
+  const nonHostPlayers = room.players.filter(p => p.confirmed && p.id !== room.hostId);
+  const hostScore = room.hostScore || 0;
+
+  // Find the highest individual player score
+  const playerScores = nonHostPlayers.map(p => p.score);
+  const topPlayerScore = playerScores.length ? Math.max(...playerScores) : -Infinity;
+
+  if (hostScore > topPlayerScore) {
+    // Host wins outright
+    const host = room.players.find(p => p.id === room.hostId);
+    room.winner = { ...host, isHostWin: true };
+  } else if (topPlayerScore > hostScore) {
+    // Find top player(s)
+    const topPlayers = nonHostPlayers.filter(p => p.score === topPlayerScore);
+    if (topPlayers.length === 1) {
+      room.winner = topPlayers[0];
+    } else {
+      // Coin flip among tied top players
+      room.winner = topPlayers[Math.floor(Math.random() * topPlayers.length)];
+      room.coinFlip = true;
+      room.tiedPlayers = topPlayers.map(p => p.name);
+    }
+  } else {
+    // Host tied with top player(s) — coin flip among all tied
+    const tied = nonHostPlayers.filter(p => p.score === topPlayerScore);
+    const host = room.players.find(p => p.id === room.hostId);
+    const allTied = [{ ...host, isHostWin: true }, ...tied];
+    const picked = allTied[Math.floor(Math.random() * allTied.length)];
+    room.winner = picked;
+    room.coinFlip = true;
+    room.tiedPlayers = [host.name + ' (DJ)', ...tied.map(p => p.name)];
+  }
+
   return { room };
 }
 

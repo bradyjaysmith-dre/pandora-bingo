@@ -537,7 +537,92 @@ export default function PickScreen({ room, playerId, isHost, graceSecondsLeft })
       {isHost && <HostForceStartBanner room={room} />}
       {room.gameMode === 'newlywed' && <NewlywedPickScreen room={room} playerId={playerId} />}
       {room.gameMode === 'gongshow' && <GongShowPickScreen room={room} playerId={playerId} />}
-      {room.gameMode !== 'newlywed' && room.gameMode !== 'gongshow' && <StandardPickScreen room={room} playerId={playerId} />}
+      {room.gameMode === 'djbattle' && <DJBattlePickScreen room={room} playerId={playerId} isHost={isHost} />}
+      {room.gameMode !== 'newlywed' && room.gameMode !== 'gongshow' && room.gameMode !== 'djbattle' && <StandardPickScreen room={room} playerId={playerId} />}
     </>
+  );
+}
+
+// ─── DJ Battle ────────────────────────────────────────────────────────────────
+
+function DJBattlePickScreen({ room, playerId, isHost }) {
+  const [picks, setPicks] = useState([]);
+  // DJ Battle is always artist mode
+  const pool = room.artistPool || [];
+  const getKey = (item) => item.id || item.name;
+  const LIMIT = room.djPickCount || 5;
+
+  const toggle = (item) => {
+    const key = getKey(item);
+    if (picks.some(p => getKey(p) === key)) {
+      setPicks(picks.filter(p => getKey(p) !== key));
+    } else {
+      if (picks.length >= LIMIT) return;
+      setPicks([...picks, item]);
+    }
+  };
+
+  const confirm = () => {
+    if (picks.length < LIMIT) return;
+    socket.emit('player:picks', { picks });
+  };
+
+  const s = sharedStyles();
+  const purple = '#a855f7';
+  const purpleBg = '#2e1065';
+
+  // Host sees a "waiting" notice instead of picks — host doesn't pick in DJ Battle
+  if (isHost) {
+    return (
+      <div style={s.wrap}>
+        <div style={s.title}>🎧 DJ Battle</div>
+        <div style={s.sub}>You're the DJ — no picks needed. Players are choosing their artists now.</div>
+        {room.playlistName && (
+          <div style={{ padding: '14px 16px', borderRadius: 8, background: 'rgba(168,85,247,0.08)', border: '1px solid rgba(168,85,247,0.3)', marginBottom: 16 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: purple, textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 6 }}>Your playlist</div>
+            <div style={{ fontSize: 16, fontWeight: 700, color: '#e2e8f0', marginBottom: room.playlistHint ? 4 : 0 }}>{room.playlistName}</div>
+            {room.playlistHint && <div style={{ fontSize: 13, color: '#94a3b8' }}>{room.playlistHint}</div>}
+          </div>
+        )}
+        <div style={{ padding: '12px 14px', borderRadius: 8, background: '#0f172a', border: '1px solid #334155', color: '#64748b', fontSize: 13 }}>
+          Waiting for players to confirm their picks…
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={s.wrap}>
+      <div style={s.title}>🎧 DJ Battle — Artist mode</div>
+      <div style={s.sub}>Pick {LIMIT} artists you think the DJ will play.</div>
+
+      {/* Playlist info */}
+      {(room.playlistName || room.playlistHint) && (
+        <div style={{ padding: '12px 14px', borderRadius: 8, background: 'rgba(168,85,247,0.08)', border: '1px solid rgba(168,85,247,0.3)', marginBottom: 14 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: purple, textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 4 }}>The playlist</div>
+          {room.playlistName && <div style={{ fontSize: 15, fontWeight: 700, color: '#e2e8f0', marginBottom: room.playlistHint ? 4 : 0 }}>{room.playlistName}</div>}
+          {room.playlistHint && <div style={{ fontSize: 13, color: '#94a3b8' }}>{room.playlistHint}</div>}
+        </div>
+      )}
+
+      <ProgressDots count={picks.length} limit={LIMIT} color={purple} />
+      <SelectedChips picks={picks} pickMode="artists" onRemove={(item) => toggle(item)} accentColor={purple} limit={LIMIT} />
+
+      <SearchPicker
+        roomCode={room.code}
+        pickMode="artists"
+        musicSource={room.musicSource}
+        pool={pool}
+        selected={picks}
+        onToggle={toggle}
+        limit={LIMIT}
+        accentColor={purple}
+        accentBg={purpleBg}
+      />
+
+      <button style={s.btn(picks.length === LIMIT, purple)} onClick={confirm} disabled={picks.length < LIMIT}>
+        {picks.length === LIMIT ? 'Lock in picks' : `Pick ${LIMIT - picks.length} more artist${LIMIT - picks.length !== 1 ? 's' : ''}`}
+      </button>
+    </div>
   );
 }

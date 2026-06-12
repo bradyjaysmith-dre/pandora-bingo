@@ -234,9 +234,9 @@ io.on('connection', (socket) => {
   });
 
   // ── Create room ──────────────────────────────────────────────────────────
-  socket.on('host:create', ({ hostName, genre, matchTarget, timeLimit, pickMode, musicSource, gameMode, blindMode }) => {
+  socket.on('host:create', ({ hostName, genre, matchTarget, timeLimit, pickMode, musicSource, gameMode, blindMode, djPickCount, playlistName, playlistHint }) => {
     const hostId = uuidv4();
-    const room = game.createRoom({ hostId, hostName, genre, matchTarget, timeLimit, pickMode, musicSource, gameMode, blindMode });
+    const room = game.createRoom({ hostId, hostName, genre, matchTarget, timeLimit, pickMode, musicSource, gameMode, blindMode, djPickCount, playlistName, playlistHint });
     socket.join(room.code);
     socket.data.roomCode = room.code;
     socket.data.playerId = hostId;
@@ -266,10 +266,10 @@ io.on('connection', (socket) => {
   });
 
   // ── Reset room for new game ──────────────────────────────────────────────
-  socket.on('host:reset', ({ genre, matchTarget, timeLimit, pickMode, musicSource, gameMode, blindMode }) => {
+  socket.on('host:reset', ({ genre, matchTarget, timeLimit, pickMode, musicSource, gameMode, blindMode, djPickCount, playlistName, playlistHint }) => {
     const { roomCode } = socket.data;
     stopSpotifyPolling(roomCode);
-    const result = game.resetRoom(roomCode, { genre, matchTarget, timeLimit, pickMode, musicSource, gameMode, blindMode });
+    const result = game.resetRoom(roomCode, { genre, matchTarget, timeLimit, pickMode, musicSource, gameMode, blindMode, djPickCount, playlistName, playlistHint });
     if (result.error) { socket.emit('error', { message: result.error }); return; }
     io.to(roomCode).emit('room:reset', { room: result.room });
     console.log('Room reset:', roomCode);
@@ -319,6 +319,11 @@ io.on('connection', (socket) => {
     const { roomCode } = socket.data;
     const result = game.startGame(roomCode);
     if (result.error) { socket.emit('error', { message: result.error }); return; }
+    // In DJ Battle, the host doesn't pick — mark them confirmed immediately
+    if (result.room.gameMode === 'djbattle') {
+      const host = result.room.players.find(p => p.id === result.room.hostId);
+      if (host) host.confirmed = true;
+    }
     io.to(roomCode).emit('game:picking', { room: result.room });
   });
 
@@ -368,10 +373,11 @@ io.on('connection', (socket) => {
     if (!room) return;
     if (room.phase === 'playing') return;
     if (room.phase !== 'picking') return;
-    // Solo mode: only one player needed; auto-start as soon as they confirm
-    const allConfirmed = room.soloMode
-      ? room.players.every(p => p.confirmed)
-      : room.players.every(p => p.confirmed);
+    // In DJ Battle, the host doesn't pick — only non-host players need to confirm.
+    const relevantPlayers = room.gameMode === 'djbattle'
+      ? room.players.filter(p => p.id !== room.hostId)
+      : room.players;
+    const allConfirmed = relevantPlayers.length > 0 && relevantPlayers.every(p => p.confirmed);
     if (allConfirmed) {
       const startResult = game.startCountdown(roomCode);
       io.to(roomCode).emit('game:playing', { room: startResult.room });
@@ -534,6 +540,9 @@ function broadcastSongResult(roomCode, result, songTitle) {
   }
   if (result.gongEvents && result.gongEvents.length > 0) {
     io.to(roomCode).emit('game:gong_events', { events: result.gongEvents, song: songTitle });
+  }
+  if (result.djEvents && result.djEvents.length > 0) {
+    io.to(roomCode).emit('game:dj_events', { events: result.djEvents, song: songTitle });
   }
   if (result.winner) {
     recordLeaderboardResults(result.room);

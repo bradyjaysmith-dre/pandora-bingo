@@ -222,6 +222,107 @@ function GongShowCard({ me, room, isArtistMode }) {
   );
 }
 
+// ─── DJ Battle card ───────────────────────────────────────────────────────────
+
+function DJBattleCard({ me, room, playerId, isHost }) {
+  const s = cardStyles();
+  const purple = '#a855f7';
+  const purpleDim = 'rgba(168,85,247,0.12)';
+
+  const isMatched = (pick) => room.playedSongs.some(song => {
+    // Artist mode matching (DJ Battle is always artist mode)
+    if (pick.id && song.artistIds && song.artistIds.length) return song.artistIds.includes(pick.id);
+    const pa = (song.artist || '').toLowerCase().split(/\s*[,&]\s*|\s+ft\.?\s+|\s+feat\.?\s+/).map(a => a.trim());
+    return pa.some(a => a === (pick.name || '').toLowerCase().trim());
+  });
+
+  const djS = {
+    playlistBox: {
+      padding: '12px 14px', borderRadius: 8, marginBottom: 14,
+      background: purpleDim, border: '1px solid rgba(168,85,247,0.3)',
+    },
+    playlistLabel: { fontSize: 11, fontWeight: 700, color: purple, textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 4 },
+    playlistName: { fontSize: 15, fontWeight: 700, color: GC.text, marginBottom: 4 },
+    playlistHint: { fontSize: 13, color: GC.muted },
+    hostScoreBox: {
+      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+      padding: '10px 14px', borderRadius: 8, marginBottom: 14,
+      background: 'rgba(168,85,247,0.07)', border: '1px solid rgba(168,85,247,0.2)',
+    },
+    hostScoreLabel: { fontSize: 12, color: purple, fontWeight: 600 },
+    hostScoreVal: { fontSize: 22, fontWeight: 800, color: purple, fontFamily: "'Orbitron', monospace" },
+  };
+
+  if (isHost) {
+    // Host sees the scoreboard from their perspective — who's guessing what
+    return (
+      <div>
+        {(room.playlistName || room.playlistHint) && (
+          <div style={djS.playlistBox}>
+            <div style={djS.playlistLabel}>Your playlist</div>
+            {room.playlistName && <div style={djS.playlistName}>{room.playlistName}</div>}
+            {room.playlistHint && <div style={djS.playlistHint}>{room.playlistHint}</div>}
+          </div>
+        )}
+        <div style={djS.hostScoreBox}>
+          <div>
+            <div style={djS.hostScoreLabel}>🎧 Your score (DJ)</div>
+            <div style={{ fontSize: 11, color: GC.muted, marginTop: 2 }}>Songs nobody guessed</div>
+          </div>
+          <div style={djS.hostScoreVal}>{room.hostScore || 0}<span style={{ fontSize: 14, opacity: 0.6 }}> / {room.matchTarget}</span></div>
+        </div>
+        <PlayedList room={room} />
+      </div>
+    );
+  }
+
+  // Player view — show their picks and match status
+  const matchedCount = (me.picks || []).filter(isMatched).length;
+  return (
+    <div>
+      {(room.playlistName || room.playlistHint) && (
+        <div style={djS.playlistBox}>
+          <div style={djS.playlistLabel}>The playlist</div>
+          {room.playlistName && <div style={djS.playlistName}>{room.playlistName}</div>}
+          {room.playlistHint && <div style={djS.playlistHint}>{room.playlistHint}</div>}
+        </div>
+      )}
+
+      {/* Host score indicator */}
+      <div style={djS.hostScoreBox}>
+        <div>
+          <div style={djS.hostScoreLabel}>🎧 DJ score</div>
+          <div style={{ fontSize: 11, color: GC.muted, marginTop: 2 }}>Unguessed artists</div>
+        </div>
+        <div style={djS.hostScoreVal}>{room.hostScore || 0}<span style={{ fontSize: 14, opacity: 0.6 }}> / {room.matchTarget}</span></div>
+      </div>
+
+      <div style={{ fontSize: 11, fontWeight: 700, color: purple, textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 8 }}>
+        Your picks — {matchedCount} / {room.matchTarget} matched
+      </div>
+      <div style={s.grid}>
+        {(me.picks || []).map((pick, i) => {
+          const matched = isMatched(pick);
+          const matchedSongs = matched
+            ? room.playedSongs.filter(song => {
+                if (pick.id && song.artistIds && song.artistIds.length) return song.artistIds.includes(pick.id);
+                const pa = (song.artist || '').toLowerCase().split(/\s*[,&]\s*|\s+ft\.?\s+|\s+feat\.?\s+/).map(a => a.trim());
+                return pa.some(a => a === (pick.name || '').toLowerCase().trim());
+              })
+            : [];
+          return (
+            <div key={i} style={s.song(matched)}>
+              <div style={s.songTitle(matched)}>{matched ? '✓ ' : ''}{pick.name}</div>
+              {matched && <div style={s.songArtist(matched)}>{matchedSongs.map(s => s.title).join(', ')}</div>}
+            </div>
+          );
+        })}
+      </div>
+      <PlayedList room={room} />
+    </div>
+  );
+}
+
 // ─── Shared helpers ───────────────────────────────────────────────────────────
 
 function PlayedList({ room }) {
@@ -550,7 +651,18 @@ export default function GameScreen({ room, playerId, isHost, spotifyTokens, nowP
       });
     });
 
-    return () => { socket.off('game:wildcards'); socket.off('game:gong_events'); };
+    socket.on('game:dj_events', ({ events, song }) => {
+      const hostPoint = events.find(e => e.type === 'host_point');
+      const playerPoints = events.filter(e => e.type === 'player_point');
+      if (hostPoint) {
+        addToast(`🎧 DJ scores! Nobody guessed "${song}"`, '#a855f7');
+      } else if (playerPoints.length > 0) {
+        const names = playerPoints.map(e => e.playerName).join(', ');
+        addToast(`🎯 ${names} score! "${song}" was in the playlist`, '#4ade80');
+      }
+    });
+
+    return () => { socket.off('game:wildcards'); socket.off('game:gong_events'); socket.off('game:dj_events'); };
   }, []);
 
   // ─── Sound effects based on room state changes ───────────────────────────
@@ -619,6 +731,7 @@ export default function GameScreen({ room, playerId, isHost, spotifyTokens, nowP
   const isSpotifyMode = room.musicSource === 'spotify';
   const isNewlywed = room.gameMode === 'newlywed';
   const isGongShow = room.gameMode === 'gongshow';
+  const isDJBattle = room.gameMode === 'djbattle';
 
   const s = {
     wrap: { maxWidth:700, margin:'0 auto', padding:16 },
@@ -707,14 +820,15 @@ export default function GameScreen({ room, playerId, isHost, spotifyTokens, nowP
           <div style={s.timer}>{formatTime(secondsLeft)}</div>
         </div>
         <div style={{textAlign:'right'}}>
-          <div style={s.timerLabel}>{isGongShow ? 'Points to win' : 'Win at'}</div>
-          <div style={{fontSize:18,fontWeight:700,color:GC.text,fontFamily:"'Orbitron', monospace"}}>{room.matchTarget} {isGongShow ? 'pts' : 'matches'}</div>
+          <div style={s.timerLabel}>{isGongShow || isDJBattle ? 'Points to win' : 'Win at'}</div>
+          <div style={{fontSize:18,fontWeight:700,color:GC.text,fontFamily:"'Orbitron', monospace"}}>{room.matchTarget} {isGongShow || isDJBattle ? 'pts' : 'matches'}</div>
         </div>
       </div>
 
       <div>
         {isGongShow && <span style={s.badge(GC.redDim,GC.red,'rgba(248,113,113,0.3)')}>🔔 Gong Show Bingo</span>}
         {isNewlywed && <span style={s.badge(GC.amberDim,GC.amber,'rgba(255,179,71,0.3)')}>🎯 Newlywed Bingo</span>}
+        {isDJBattle && <span style={s.badge('rgba(168,85,247,0.12)','#a855f7','rgba(168,85,247,0.3)')}>🎧 DJ Battle</span>}
         <span style={s.badge('rgba(129,140,248,0.12)',GC.indigo,'rgba(129,140,248,0.3)')}>{isArtistMode ? 'Artist mode' : 'Song mode'} — {room.genre}</span>
         {isSpotifyMode && <span style={s.badge('rgba(29,185,84,0.12)','#1DB954','rgba(29,185,84,0.3)')}>Spotify</span>}
         {isAuddMode && <span style={s.badge('rgba(129,140,248,0.12)',GC.indigo,'rgba(129,140,248,0.3)')}>🎙 Auto-detect</span>}
@@ -735,18 +849,32 @@ export default function GameScreen({ room, playerId, isHost, spotifyTokens, nowP
       <div style={s.tabs}>
         <button style={s.tab(tab==='card')} onClick={() => setTab('card')}>My card</button>
         <button style={s.tab(tab==='scores')} onClick={() => setTab('scores')}>Scores</button>
-        {isHost && <button style={s.tab(tab==='host')} onClick={() => setTab('host')}>{isSpotifyMode ? 'Host (Spotify)' : isAuddMode ? 'Host (Mic)' : 'Host controls'}</button>}
+        {isHost && <button style={s.tab(tab==='host')} onClick={() => setTab('host')}>{isSpotifyMode ? 'Host (Spotify)' : isAuddMode ? 'Host (Mic)' : isDJBattle ? 'Host (DJ)' : 'Host controls'}</button>}
       </div>
 
       {tab === 'card' && me && (
         isGongShow ? <GongShowCard me={me} room={room} isArtistMode={isArtistMode} /> :
         isNewlywed ? <NewlywedCard me={me} room={room} playerId={playerId} isArtistMode={isArtistMode} /> :
+        isDJBattle ? <DJBattleCard me={me} room={room} playerId={playerId} isHost={isHost} /> :
         <StandardCard me={me} room={room} isArtistMode={isArtistMode} />
       )}
 
       {tab === 'scores' && (
         <div style={s.scoreGrid}>
-          {sorted.map(p => {
+          {isDJBattle && (
+            <div style={{
+              ...s.scoreCard(room.hostScore >= room.matchTarget),
+              border: room.hostScore >= room.matchTarget ? '1px solid rgba(168,85,247,0.5)' : '1px solid rgba(168,85,247,0.25)',
+              background: room.hostScore >= room.matchTarget ? 'rgba(168,85,247,0.15)' : 'rgba(168,85,247,0.06)',
+            }}>
+              <div style={{ fontSize:12, color:'#a855f7', marginBottom:4 }}>🎧 DJ (Host)</div>
+              <div style={{ fontSize:22, fontWeight:700, color: room.hostScore >= room.matchTarget ? '#a855f7' : GC.text, fontFamily:"'Orbitron', monospace" }}>
+                {room.hostScore || 0}<span style={{fontSize:14,opacity:0.6}}> / {room.matchTarget}</span>
+              </div>
+              <div style={{fontSize:11,color:GC.muted,marginTop:4}}>Unguessed artists</div>
+            </div>
+          )}
+          {sorted.filter(p => isDJBattle ? p.id !== room.hostId : true).map(p => {
             const winning = p.score >= room.matchTarget;
             return (
               <div key={p.id} style={s.scoreCard(winning)}>

@@ -51,6 +51,9 @@ export default function HomeScreen({ spotifyConnected, onLeaderboard }) {
   const [musicSource, setMusicSource] = useState('manual');
   const [gameMode, setGameMode] = useState('standard');
   const [blindMode, setBlindMode] = useState(false);
+  const [djPickCount, setDjPickCount] = useState(5);
+  const [playlistName, setPlaylistName] = useState('');
+  const [playlistHint, setPlaylistHint] = useState('');
   const [spotifyAvailable, setSpotifyAvailable] = useState(false);
 
   // Fetch server config to determine which music sources to show
@@ -75,6 +78,9 @@ export default function HomeScreen({ spotifyConnected, onLeaderboard }) {
         if (s.musicSource) setMusicSource(s.musicSource);
         if (s.gameMode) setGameMode(s.gameMode);
         if (s.blindMode !== undefined) setBlindMode(s.blindMode);
+        if (s.djPickCount) setDjPickCount(s.djPickCount);
+        if (s.playlistName) setPlaylistName(s.playlistName);
+        if (s.playlistHint) setPlaylistHint(s.playlistHint);
         setMode('host');
       } catch {}
       sessionStorage.removeItem('pandora_pre_spotify');
@@ -202,7 +208,8 @@ export default function HomeScreen({ spotifyConnected, onLeaderboard }) {
 
   const connectSpotify = () => {
     sessionStorage.setItem('pandora_pre_spotify', JSON.stringify({
-      name, genre, matchTarget, timeLimit, pickMode, musicSource, gameMode, blindMode
+      name, genre, matchTarget, timeLimit, pickMode, musicSource, gameMode, blindMode,
+      djPickCount, playlistName, playlistHint,
     }));
     window.location.href = '/auth/spotify';
   };
@@ -213,7 +220,7 @@ export default function HomeScreen({ spotifyConnected, onLeaderboard }) {
     if (musicSource === 'spotify' && !spotifyConnected) { alert('Connect your Spotify account first'); return; }
     // If somehow spotify was selected but is no longer available, fall back to manual
     const resolvedSource = (musicSource === 'spotify' && !spotifyAvailable) ? 'manual' : musicSource;
-    socket.emit('host:create', { hostName: name.trim(), genre, matchTarget, timeLimit, pickMode, musicSource: resolvedSource, gameMode, blindMode });
+    socket.emit('host:create', { hostName: name.trim(), genre, matchTarget, timeLimit, pickMode, musicSource: resolvedSource, gameMode, blindMode, djPickCount, playlistName: playlistName.trim(), playlistHint: playlistHint.trim() });
   };
 
   const joinGame = () => {
@@ -223,6 +230,7 @@ export default function HomeScreen({ spotifyConnected, onLeaderboard }) {
   };
 
   const effectiveMaxTarget = 10;
+  const matchTargetLabel = gameMode === 'gongshow' ? 'Points to win' : gameMode === 'djbattle' ? 'Points to win' : 'Matches to win';
 
   if (mode === 'home') return (
     <div style={s.outer}>
@@ -314,6 +322,43 @@ export default function HomeScreen({ spotifyConnected, onLeaderboard }) {
           <div style={s.gameModeSub}>Pick 10 songs + 5 secret gong songs. Gong another player's pick to cancel their point — but duplicate gongers cancel each other and lose a point.</div>
         </div>
 
+        <div style={s.gameModeCard(gameMode === 'djbattle', '#a855f7')} onClick={() => { setGameMode('djbattle'); setPickMode('artists'); setTimeLimit(40); }}>
+          <div style={s.gameModeTitle(gameMode === 'djbattle', '#a855f7')}>
+            DJ Battle
+            <span style={s.badge('rgba(168,85,247,0.15)', '#a855f7', 'rgba(168,85,247,0.4)')}>NEW</span>
+          </div>
+          <div style={s.gameModeSub}>Host plays their own playlist. Players pick artists they think will play. Score when you guess right — host scores when nobody guesses their artist.</div>
+        </div>
+
+        {gameMode === 'djbattle' && (
+          <div style={{ padding: '14px 16px', borderRadius: 8, background: 'rgba(168,85,247,0.07)', border: '1px solid rgba(168,85,247,0.25)', marginBottom: 8 }}>
+            <div style={{ fontSize: 12, color: '#a855f7', fontWeight: 700, marginBottom: 10, textTransform: 'uppercase', letterSpacing: '0.07em' }}>Playlist details</div>
+            <label style={{ ...s.label, color: '#a855f7' }}>Playlist name <span style={{ color: C.muted, fontWeight: 400, textTransform: 'none' }}>(shown to players)</span></label>
+            <input
+              style={{ ...s.input, marginBottom: 10, border: '1px solid rgba(168,85,247,0.4)' }}
+              value={playlistName}
+              onChange={e => setPlaylistName(e.target.value)}
+              placeholder="e.g. My 2000s Throwback Mix"
+            />
+            <label style={{ ...s.label, color: '#a855f7' }}>Hint for players <span style={{ color: C.muted, fontWeight: 400, textTransform: 'none' }}>(optional)</span></label>
+            <input
+              style={{ ...s.input, marginBottom: 10, border: '1px solid rgba(168,85,247,0.4)' }}
+              value={playlistHint}
+              onChange={e => setPlaylistHint(e.target.value)}
+              placeholder="e.g. All artists who peaked in the 2000s"
+            />
+            <label style={{ ...s.label, color: '#a855f7' }}>Artists per player</label>
+            <input
+              type="number"
+              style={{ ...s.numInput, width: '100%', boxSizing: 'border-box', marginBottom: 0, border: '1px solid rgba(168,85,247,0.4)' }}
+              min={1} max={15}
+              value={djPickCount}
+              onChange={e => setDjPickCount(Math.max(1, Math.min(15, parseInt(e.target.value) || 1)))}
+            />
+            <div style={{ fontSize: 11, color: C.muted, marginTop: 4 }}>How many artists each player picks (1–15). Default: 5.</div>
+          </div>
+        )}
+
         {gameMode === 'gongshow' && (
           <div style={s.checkRow} onClick={() => setBlindMode(!blindMode)}>
             <div>
@@ -367,12 +412,23 @@ export default function HomeScreen({ spotifyConnected, onLeaderboard }) {
 
         <div style={s.divider} />
         <label style={s.label}>Pick mode</label>
-        <div style={s.toggle}>
-          <button style={s.toggleBtn(pickMode === 'songs')} onClick={() => setPickMode('songs')}>Songs</button>
-          <button style={s.toggleBtn(pickMode === 'artists')} onClick={() => setPickMode('artists')}>Artists</button>
-        </div>
+        {gameMode === 'djbattle' ? (
+          <div style={{ padding: '10px 14px', borderRadius: 8, background: 'rgba(168,85,247,0.08)', border: '1px solid rgba(168,85,247,0.25)', marginBottom: 8 }}>
+            <div style={{ fontSize: 13, color: '#a855f7', fontWeight: 700 }}>Artist mode only</div>
+            <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>DJ Battle always uses artist mode — players predict which artists will appear in the playlist.</div>
+          </div>
+        ) : (
+          <div style={s.toggle}>
+            <button style={s.toggleBtn(pickMode === 'songs')} onClick={() => setPickMode('songs')}>Songs</button>
+            <button style={s.toggleBtn(pickMode === 'artists')} onClick={() => setPickMode('artists')}>Artists</button>
+          </div>
+        )}
         <div style={s.desc}>
-          {pickMode === 'songs' ? 'Players pick specific songs they predict will play.' : 'Players pick artists. A match occurs when any song by that artist plays.'}
+          {gameMode === 'djbattle'
+            ? 'Players pick artists they think will appear in the host\'s playlist. A match occurs when any song by that artist plays.'
+            : pickMode === 'songs'
+              ? 'Players pick specific songs they predict will play.'
+              : 'Players pick artists. A match occurs when any song by that artist plays.'}
           {gameMode === 'gongshow' && ' In Gong Show mode you also pick 5 secret gong songs.'}
           {gameMode === 'newlywed' && ' In Newlywed mode you also pick backups and secret guesses.'}
         </div>
@@ -386,7 +442,7 @@ export default function HomeScreen({ spotifyConnected, onLeaderboard }) {
 
         <div style={s.row}>
           <div style={{ flex: 1 }}>
-            <label style={s.label}>{gameMode === 'gongshow' ? 'Points to win' : 'Matches to win'}</label>
+            <label style={s.label}>{matchTargetLabel}</label>
             <input type="number" style={s.numInput}
               min={1} max={effectiveMaxTarget}
               value={matchTarget}

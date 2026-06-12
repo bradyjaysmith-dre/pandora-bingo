@@ -1,5 +1,6 @@
 # Pandora Bingo
 
+> **v11.0.0** — DJ Battle game mode: host vs. players, playlist declaration, artist picks, host scores unguessed artists, 40-min default. ✅
 > **v10.6.0** — AudD fully operational: 15s interval, 60s post-match cooldown, per-game + cumulative stats panel, Spotify polling leak fixed, Railway build fix. ✅
 > **v10.5.0** — AudD mic detection working: iTunes pick search, EndScreen source fix, 6s clip / retry-on-null. ✅
 > **v10.4.0** — AudD audio fingerprinting source, conditional Spotify visibility, `/api/config` endpoint. ✅
@@ -137,6 +138,24 @@ Local dev is unchanged — `bash start.sh` runs Vite on 5174 with a proxy to 300
 
 **Gong Show Bingo** — A chaotic sabotage mode. Pick 10 songs to score points and 5 secret gong songs to cancel other players' points. Duplicate gongers cancel each other and both lose a point. Optional blind mode hides picks until each song plays.
 
+**DJ Battle** — Host vs. players. The host plays their own playlist and declares its name and a hint. Players pick artists they think will appear in the playlist. Players score when they guess right; the host scores when nobody guessed the artist. First to the points target wins. Default time limit is 40 minutes.
+
+---
+
+### DJ Battle Rules
+
+The host declares their playlist name and an optional hint to players before picking begins. Players use this information to pick artists — there is no genre pool restriction; players search the full catalog.
+
+**Scoring:**
+- A song plays → any player who picked that artist scores +1 (independently — duplicates both score)
+- A song plays → nobody picked that artist → host scores +1
+
+**Win condition:** First player or the host to reach the points target wins immediately. If time expires, the highest individual score wins. If a player ties with the host, or players tie with each other, a coin flip decides.
+
+**Host win** means the playlist was too unpredictable — players failed to block enough points. Player win means the crowd read the DJ correctly.
+
+**Pick count** is configurable by the host (1–15 artists per player, default 5). DJ Battle is always artist mode — song mode is not applicable.
+
 ---
 
 ### Newlywed Bingo Rules
@@ -201,7 +220,7 @@ The host selects a source when creating a room:
 
 ### Pick Modes
 
-All three game modes support song mode and artist mode. **Artist mode is the default.**
+Standard, Newlywed, and Gong Show support song mode and artist mode. **Artist mode is the default.** DJ Battle is always artist mode.
 
 **Song mode** — Players pick specific songs. Match occurs when that exact song is detected.
 
@@ -222,9 +241,9 @@ Song and artist pools are independent. No artist appears more than once in eithe
 
 ### Win Conditions
 
-- Matches to win: 1–10 (default 5)
-- Time limit: 5–60 minutes in 5-minute increments (default 15)
-- Game ends when a player hits the target OR time runs out
+- Matches/points to win: 1–10 (default 5)
+- Time limit: 5–60 minutes in 5-minute increments (default 15; default 40 for DJ Battle)
+- Game ends when a player or the host hits the target OR time runs out
 - Tied scores at time expiry → coin flip
 
 ### Host Controls
@@ -325,6 +344,14 @@ Host setup state saved to sessionStorage before OAuth redirect and restored on r
 
 **Newlywed guesses server-only** — Never broadcast to other clients. Hits computed server-side when a song plays.
 
+**DJ Battle host auto-confirmed** — In DJ Battle the host doesn't submit picks. `host:start` immediately marks the host player as confirmed so the server's "all confirmed" check never waits on them. Only non-host players need to confirm before the game starts.
+
+**DJ Battle host score is room-level state** — `room.hostScore` is a plain integer on the room object, incremented server-side in `playSongDJBattle`. It is included in every `game:updated` broadcast so all clients see the live DJ score without any special socket event.
+
+**DJ Battle winner representation** — When the host wins mid-game or on time expiry, the winner object is set to `{ ...host, isHostWin: true }`. This lets the existing `game:over` / leaderboard / EndScreen machinery work without branching — clients check `winner.isHostWin` to customize the end-game display.
+
+**DJ Battle pick count is configurable** — `djPickCount` (1–15, default 5) is set by the host at room creation and stored on the room. The pick screen reads `room.djPickCount` as its limit, so it adapts without any client-side hardcoding.
+
 **Gong picks server-only** — Never sent to other clients. Clients receive only outcomes (`game:gong_events`) after the fact.
 
 **Gong backfire is intentional** — Duplicate gonging is a risk, not a bug. Meta-strategy layer.
@@ -342,8 +369,9 @@ pandora-bingo/
   server/
     index.js           Express + Socket.io entry; /api/config, /api/audd/identify,
                        /api/itunes/search, /api/spotify/search; serves client/dist in prod;
-                       Spotify polling source-gated to prevent leaking into AudD rooms
-    game.js            Room state, player management, scoring; all game modes;
+                       Spotify polling source-gated; DJ Battle host auto-confirmed on start
+    game.js            Room state, player management, scoring; all game modes including
+                       DJ Battle (playSongDJBattle, endGameDJBattle, hostScore);
                        ID-first match detection with string fallback
     audd.js            AudD proxy — multipart POST to api.audd.io; API key server-side only
     songs.js           Static song/artist pools by genre (50 each; final fallback)
@@ -361,12 +389,16 @@ pandora-bingo/
       index.css             Base styles
       components/
         HomeScreen.jsx        Name entry, host setup; fetches /api/config for source options;
-                              Manual / AudD / Spotify source cards; artist mode default
+                              Manual / AudD / Spotify source cards; DJ Battle mode card with
+                              playlist name, hint, and pick count fields; artist mode default
         LobbyScreen.jsx       Room code display, player list, start + solo start buttons
         LeaderboardScreen.jsx All-time player stats: matches, wins, games played
-        PickScreen.jsx        Pick flows for all 3 modes; unified useSearch hook (Spotify +
-                              iTunes); SearchPicker; SelectedChips; ProgressDots
+        PickScreen.jsx        Pick flows for all 4 modes; unified useSearch hook (Spotify +
+                              iTunes); DJ Battle host waiting notice + playlist display;
+                              SearchPicker; SelectedChips; ProgressDots
         GameScreen.jsx        Timer, card, scoreboard, host controls, event toasts;
+                              DJ Battle card (player picks + DJ score counter);
+                              DJ Battle scoreboard host row; game:dj_events toasts;
                               AudD mic capture loop with ambient constraints; 15s interval;
                               60s post-match cooldown; audio input device selector;
                               on-screen debug log; per-game + cumulative stats panel
@@ -408,6 +440,7 @@ pandora-bingo/
 - v10.4 — AudD audio fingerprinting source; SPOTIFY_ENABLED flag; /api/config endpoint; audio input device selector
 - v10.5 — iTunes catalog search in AudD rooms; EndScreen source selector fix; 6s clip / retry-on-null; platform-neutral device selector hint text
 - v10.6 — AudD fully operational: 15s polling interval; 60s post-match cooldown; per-game + cumulative stats panel; Spotify polling leak fixed (source-gated); Android BT speaker fix (ambient constraints); circular ref crash fixes; Railway build fix (vite moved to dependencies)
+- v11.0 — DJ Battle game mode: host declares playlist, players pick artists, host scores unguessed artists, independent player scoring, configurable pick count (1–15), 40-min default time, host auto-confirmed at pick phase start, `game:dj_events` socket event, purple scoreboard host row
 
 ### Upcoming
 
