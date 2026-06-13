@@ -1,44 +1,33 @@
 /**
- * dynamic-songs.js — fetches popular songs/artists per genre from Last.fm,
- * with a persistent on-disk cache as fallback.
+ * dynamic-songs.js — generates an artist suggestion pool from a playlist name.
  *
- * If the fetch fails (network down, rate-limited, etc.) the last good result
- * stored in song-cache.json is returned. If there is no cache yet the static
- * pool from songs.js is used.
+ * Priority chain:
+ *   1. Claude AI (Anthropic API) — playlist name → 50 likely artists
+ *   2. iTunes search — keyword search from playlist name words → up to 50 artists
+ *   3. Static fallback pool — 50 generic popular artists
+ *
+ * Genre-based Last.fm fetching is retired. Pool is now playlist-name-driven
+ * and stored on room.artistPool at creation time, like the old genre pool was.
+ *
+ * Song mode retired — only artist pools are generated.
  */
 
-const fs   = require('fs');
-const path = require('path');
 const https = require('https');
-const { SONGS, ARTISTS } = require('./songs');
 
-const CACHE_FILE = path.join(__dirname, 'song-cache.json');
-
-// Last.fm free tag → genre mapping
-const GENRE_TAGS = {
-  'Pop':        'pop',
-  'Hip-Hop':    'hip-hop',
-  'Rock':       'rock',
-  'R&B':        'rnb',
-  'Country':    'country',
-  'Electronic': 'electronic',
-};
-
-// Last.fm free API key (public, read-only, rate-limited to ~5 req/s)
-const LFM_KEY = '43693facbb24d1ac893a7d33846b15cc';
-
-// ── Cache helpers ─────────────────────────────────────────────────────────────
-
-function loadCache() {
-  try {
-    if (fs.existsSync(CACHE_FILE)) return JSON.parse(fs.readFileSync(CACHE_FILE, 'utf8'));
-  } catch {}
-  return {};
-}
-
-function saveCache(cache) {
-  try { fs.writeFileSync(CACHE_FILE, JSON.stringify(cache, null, 2)); } catch {}
-}
+// ── Static fallback pool ──────────────────────────────────────────────────────
+// Used when both AI and iTunes fail. Broad cross-genre mix.
+const FALLBACK_ARTISTS = [
+  'Taylor Swift', 'Drake', 'Beyoncé', 'Kendrick Lamar', 'Billie Eilish',
+  'The Weeknd', 'Ariana Grande', 'Post Malone', 'Dua Lipa', 'Bad Bunny',
+  'Ed Sheeran', 'Olivia Rodrigo', 'Harry Styles', 'SZA', 'Travis Scott',
+  'Doja Cat', 'Justin Bieber', 'Rihanna', 'Bruno Mars', 'Lady Gaga',
+  'Adele', 'Lizzo', 'Lil Nas X', 'Cardi B', 'Khalid',
+  'Halsey', 'The Kid LAROI', 'Juice WRLD', 'Polo G', 'Rod Wave',
+  'Morgan Wallen', 'Luke Combs', 'Zach Bryan', 'Chris Stapleton', 'Carrie Underwood',
+  'Foo Fighters', 'Imagine Dragons', 'Twenty One Pilots', 'Coldplay', 'Radiohead',
+  'Frank Ocean', 'Tyler the Creator', 'J. Cole', 'Nicki Minaj', 'Future',
+  'Lil Baby', 'Gunna', 'Young Thug', 'NBA YoungBoy', 'Jack Harlow',
+].map(name => ({ name }));
 
 // ── HTTP helper ───────────────────────────────────────────────────────────────
 
@@ -57,77 +46,149 @@ function httpsGet(url) {
   });
 }
 
-// ── Last.fm fetchers ──────────────────────────────────────────────────────────
+// ── iTunes artist search ──────────────────────────────────────────────────────
+// Extracts meaningful words from the playlist name, searches iTunes for artists,
+// deduplicates, and returns up to 50 { name } objects.
 
-async function fetchTopTracks(tag) {
-  const url = `https://ws.audioscrobbler.com/2.0/?method=tag.gettoptracks&tag=${encodeURIComponent(tag)}&api_key=${LFM_KEY}&format=json&limit=50`;
-  const data = await httpsGet(url);
-  const tracks = data?.tracks?.track;
-  if (!Array.isArray(tracks) || tracks.length === 0) return null;
-  return tracks.map(t => ({ title: t.name, artist: t.artist.name }));
+async function fetchArtistsFromiTunes(playlistName) {
+  // Pull meaningful words (4+ chars, skip common filler words)
+  const stopWords = new Set(['with', 'that', 'this', 'from', 'have', 'will', 'your', 'they', 'been', 'were', 'their', 'what', 'when', 'which', 'also', 'into', 'more', 'most', 'some', 'such', 'than', 'then', 'them', 'these', 'those', 'very', 'just', 'only', 'best', 'good', 'like', 'know', 'time', 'year', 'here', 'make', 'made', 'about', 'over', 'back', 'after', 'playlist', 'music', 'songs', 'mix', 'hits', 'vibes', 'bingo']);
+  const words = playlistName
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .split(/\s+/)
+    .filter(w => w.length >= 4 && !stopWords.has(w));
+
+  if (!words.length) return null;
+
+  // Use the full playlist name as the primary query, then individual words as fallbacks
+  const queries = [playlistName, ...words].slice(0, 4);
+  const seen = new Set();
+  const artists = [];
+
+  for (const q of queries) {
+    if (artists.length >= 50) break;
+    try {
+      const url = `https://itunes.apple.com/search?term=${encodeURIComponent(q)}&entity=musicArtist&limit=25&media=music`;
+      const data = await httpsGet(url);
+      for (const a of (data.results || [])) {
+        if (!a.artistName) continue;
+        const key = a.artistName.toLowerCase();
+        if (!seen.has(key)) {
+          seen.add(key);
+          artists.push({ name: a.artistName, id: String(a.artistId) });
+        }
+        if (artists.length >= 50) break;
+      }
+    } catch (e) {
+      console.warn('[dynamic-songs] iTunes query failed for:', q, e.message);
+    }
+  }
+
+  return artists.length >= 5 ? artists : null;
 }
 
-async function fetchTopArtists(tag) {
-  const url = `https://ws.audioscrobbler.com/2.0/?method=tag.gettopartists&tag=${encodeURIComponent(tag)}&api_key=${LFM_KEY}&format=json&limit=50`;
-  const data = await httpsGet(url);
-  const artists = data?.topartists?.artist;
-  if (!Array.isArray(artists) || artists.length === 0) return null;
-  return artists.map(a => ({ name: a.name }));
+// ── Claude AI artist generation ───────────────────────────────────────────────
+// Calls the Anthropic API with the playlist name and asks for 50 likely artists.
+// Returns array of { name } or null on failure.
+
+async function fetchArtistsFromAI(playlistName) {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) return null;
+
+  const prompt = `You are helping generate artist suggestions for a music bingo game. The host's playlist is called: "${playlistName}".
+
+List exactly 50 artists who are likely to appear in this playlist. Consider the name carefully — it may hint at a genre, era, mood, or theme.
+
+Respond with ONLY a JSON array of artist name strings, no explanation, no markdown, no extra text. Example format:
+["Artist One", "Artist Two", "Artist Three"]`;
+
+  return new Promise((resolve) => {
+    const body = JSON.stringify({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 1024,
+      messages: [{ role: 'user', content: prompt }],
+    });
+
+    const req = https.request({
+      hostname: 'api.anthropic.com',
+      path: '/v1/messages',
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'Content-Length': Buffer.byteLength(body),
+      },
+    }, res => {
+      let data = '';
+      res.on('data', chunk => data += chunk);
+      res.on('end', () => {
+        try {
+          const parsed = JSON.parse(data);
+          const text = parsed?.content?.[0]?.text || '';
+          // Strip any markdown fences just in case
+          const clean = text.replace(/```[a-z]*\n?/g, '').trim();
+          const names = JSON.parse(clean);
+          if (Array.isArray(names) && names.length >= 5) {
+            resolve(names.slice(0, 50).map(n => ({ name: String(n) })));
+          } else {
+            resolve(null);
+          }
+        } catch (e) {
+          console.warn('[dynamic-songs] AI parse error:', e.message);
+          resolve(null);
+        }
+      });
+    });
+
+    req.on('error', (e) => {
+      console.warn('[dynamic-songs] AI request error:', e.message);
+      resolve(null);
+    });
+    req.setTimeout(12000, () => { req.destroy(); resolve(null); });
+    req.write(body);
+    req.end();
+  });
 }
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
 /**
- * Returns { songs, artists } for the given genre.
- * Tries to fetch fresh data from Last.fm; falls back to cache then static pool.
- * Updates the cache when fresh data is obtained.
+ * Returns { artists } for the given playlist name.
+ * Priority: AI → iTunes → static fallback.
+ * songs array is always empty (song mode retired).
  */
-async function getDynamicPool(genre) {
-  const tag = GENRE_TAGS[genre];
-  const cache = loadCache();
-  const cacheKey = genre;
+async function getDynamicPool(playlistName) {
+  if (!playlistName || !playlistName.trim()) {
+    return { songs: [], artists: FALLBACK_ARTISTS };
+  }
 
-  let freshSongs   = null;
-  let freshArtists = null;
-
-  if (tag) {
-    try {
-      [freshSongs, freshArtists] = await Promise.all([
-        fetchTopTracks(tag),
-        fetchTopArtists(tag),
-      ]);
-    } catch (e) {
-      console.warn(`[dynamic-songs] fetch failed for "${genre}":`, e.message);
+  // 1. Try AI first
+  try {
+    const aiArtists = await fetchArtistsFromAI(playlistName);
+    if (aiArtists && aiArtists.length >= 5) {
+      console.log(`[dynamic-songs] AI pool generated for "${playlistName}": ${aiArtists.length} artists`);
+      return { songs: [], artists: aiArtists };
     }
+  } catch (e) {
+    console.warn('[dynamic-songs] AI pool failed:', e.message);
   }
 
-  // Determine what to use: fresh → cached → static
-  const songs = (freshSongs && freshSongs.length >= 10)
-    ? freshSongs
-    : (cache[cacheKey]?.songs?.length >= 10
-        ? cache[cacheKey].songs
-        : (SONGS[genre] || []));
-
-  const staticArtists = (ARTISTS[genre] || []).map(n => ({ name: n }));
-  const artists = (freshArtists && freshArtists.length >= 10)
-    ? freshArtists
-    : (cache[cacheKey]?.artists?.length >= 10
-        ? cache[cacheKey].artists
-        : staticArtists);
-
-  // Persist fresh data to cache
-  if (freshSongs && freshSongs.length >= 10) {
-    cache[cacheKey] = cache[cacheKey] || {};
-    cache[cacheKey].songs     = freshSongs;
-    cache[cacheKey].updatedAt = Date.now();
+  // 2. iTunes fallback
+  try {
+    const itunesArtists = await fetchArtistsFromiTunes(playlistName);
+    if (itunesArtists && itunesArtists.length >= 5) {
+      console.log(`[dynamic-songs] iTunes pool generated for "${playlistName}": ${itunesArtists.length} artists`);
+      return { songs: [], artists: itunesArtists };
+    }
+  } catch (e) {
+    console.warn('[dynamic-songs] iTunes pool failed:', e.message);
   }
-  if (freshArtists && freshArtists.length >= 10) {
-    cache[cacheKey] = cache[cacheKey] || {};
-    cache[cacheKey].artists = freshArtists;
-  }
-  if (freshSongs || freshArtists) saveCache(cache);
 
-  return { songs, artists };
+  // 3. Static fallback
+  console.log(`[dynamic-songs] Using static fallback pool for "${playlistName}"`);
+  return { songs: [], artists: FALLBACK_ARTISTS };
 }
 
 module.exports = { getDynamicPool };

@@ -234,9 +234,9 @@ io.on('connection', (socket) => {
   });
 
   // ── Create room ──────────────────────────────────────────────────────────
-  socket.on('host:create', ({ hostName, genre, matchTarget, timeLimit, pickMode, musicSource, gameMode, blindMode, djPickCount, playlistName, playlistHint }) => {
+  socket.on('host:create', ({ hostName, matchTarget, timeLimit, musicSource, gameMode, blindMode, djPickCount, playlistName, playlistHint }) => {
     const hostId = uuidv4();
-    const room = game.createRoom({ hostId, hostName, genre, matchTarget, timeLimit, pickMode, musicSource, gameMode, blindMode, djPickCount, playlistName, playlistHint });
+    const room = game.createRoom({ hostId, hostName, matchTarget, timeLimit, musicSource, gameMode, blindMode, djPickCount, playlistName, playlistHint });
     socket.join(room.code);
     socket.data.roomCode = room.code;
     socket.data.playerId = hostId;
@@ -250,36 +250,34 @@ io.on('connection', (socket) => {
       console.log('Migrated Spotify token to room', room.code);
     }
     socket.emit('room:created', { room, playerId: hostId });
-    console.log('Room created:', room.code, 'by', hostName, 'mode:', gameMode, 'source:', musicSource);
+    console.log('Room created:', room.code, 'by', hostName, 'mode:', gameMode, 'source:', musicSource, 'playlist:', playlistName);
     if (musicSource === 'audd') startAuddPolling(room.code);
     // Register host in leaderboard
     lb.getOrCreate(hostName);
-    // Kick off async dynamic pool refresh — silent fail
-    getDynamicPool(genre).then(({ songs, artists }) => {
+    // Kick off async artist pool generation from playlist name — silent fail
+    getDynamicPool(playlistName).then(({ artists }) => {
       const r = game.getRoom(room.code);
       if (r) {
-        r.songPool   = songs;
         r.artistPool = artists;
-        socket.emit('room:pool_updated', { songPool: songs, artistPool: artists });
+        socket.emit('room:pool_updated', { songPool: [], artistPool: artists });
       }
     }).catch(() => {});
   });
 
   // ── Reset room for new game ──────────────────────────────────────────────
-  socket.on('host:reset', ({ genre, matchTarget, timeLimit, pickMode, musicSource, gameMode, blindMode, djPickCount, playlistName, playlistHint }) => {
+  socket.on('host:reset', ({ matchTarget, timeLimit, musicSource, gameMode, blindMode, djPickCount, playlistName, playlistHint }) => {
     const { roomCode } = socket.data;
     stopSpotifyPolling(roomCode);
-    const result = game.resetRoom(roomCode, { genre, matchTarget, timeLimit, pickMode, musicSource, gameMode, blindMode, djPickCount, playlistName, playlistHint });
+    const result = game.resetRoom(roomCode, { matchTarget, timeLimit, musicSource, gameMode, blindMode, djPickCount, playlistName, playlistHint });
     if (result.error) { socket.emit('error', { message: result.error }); return; }
     io.to(roomCode).emit('room:reset', { room: result.room });
-    console.log('Room reset:', roomCode);
-    // Refresh dynamic pool for new genre
-    getDynamicPool(genre).then(({ songs, artists }) => {
+    console.log('Room reset:', roomCode, 'playlist:', playlistName);
+    // Regenerate artist pool from new playlist name
+    getDynamicPool(playlistName).then(({ artists }) => {
       const r = game.getRoom(roomCode);
       if (r) {
-        r.songPool   = songs;
         r.artistPool = artists;
-        socket.emit('room:pool_updated', { songPool: songs, artistPool: artists });
+        socket.emit('room:pool_updated', { songPool: [], artistPool: artists });
       }
     }).catch(() => {});
   });

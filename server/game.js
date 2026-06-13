@@ -1,5 +1,7 @@
 const { v4: uuidv4 } = require('uuid');
-const { getSongPool, getArtistPool } = require('./songs');
+// getSongPool / getArtistPool retained for reference but no longer used at room creation.
+// Pool is now generated from playlist name via dynamic-songs.js (artist-only).
+// const { getSongPool, getArtistPool } = require('./songs');
 
 const rooms = new Map();
 
@@ -16,24 +18,25 @@ function makePlayer(id, name) {
   };
 }
 
-function createRoom({ hostId, hostName, genre, matchTarget, timeLimit, pickMode, musicSource, gameMode, blindMode, djPickCount, playlistName, playlistHint }) {
+function createRoom({ hostId, hostName, matchTarget, timeLimit, musicSource, gameMode, blindMode, djPickCount, playlistName, playlistHint }) {
   const code = Math.random().toString(36).slice(2, 8).toUpperCase();
   const room = {
-    code, hostId, genre, matchTarget, timeLimit,
-    pickMode: pickMode || 'songs',
+    code, hostId, matchTarget, timeLimit,
+    pickMode: 'artists', // Song mode retired — artist-only across all game modes
     musicSource: musicSource || 'manual',
     gameMode: gameMode || 'standard',
     blindMode: blindMode || false,
+    // Playlist name used by all modes (replaces genre for pool generation)
+    playlistName: playlistName || '',
     // DJ Battle fields
     djPickCount: djPickCount || 5,
-    playlistName: playlistName || '',
     playlistHint: playlistHint || '',
     hostScore: 0, // DJ Battle: host points (songs nobody guessed)
     spotifyJamLink: null, // Spotify Group Session (Jam) link shared by host
     phase: 'lobby',
     players: [makePlayer(hostId, hostName)],
-    songPool: getSongPool(genre),
-    artistPool: getArtistPool(genre),
+    songPool: [],   // Retained for compatibility; not populated at creation
+    artistPool: [], // Populated async by index.js after room creation
     playedSongs: [],
     startedAt: null, endsAt: null, winner: null,
     coinFlip: false, tiedPlayers: null,
@@ -77,13 +80,12 @@ function playerDisconnect(code, playerId) {
   if (player) player.connected = false;
 }
 
-function resetRoom(code, { genre, matchTarget, timeLimit, pickMode, musicSource, gameMode, blindMode, djPickCount, playlistName, playlistHint }) {
+function resetRoom(code, { matchTarget, timeLimit, musicSource, gameMode, blindMode, djPickCount, playlistName, playlistHint }) {
   const room = getRoom(code);
   if (!room) return { error: 'Room not found' };
-  room.genre = genre;
   room.matchTarget = matchTarget;
   room.timeLimit = timeLimit;
-  room.pickMode = pickMode || 'songs';
+  room.pickMode = 'artists'; // Song mode retired
   room.musicSource = musicSource || 'manual';
   room.gameMode = gameMode || 'standard';
   room.blindMode = blindMode || false;
@@ -93,8 +95,8 @@ function resetRoom(code, { genre, matchTarget, timeLimit, pickMode, musicSource,
   room.hostScore = 0;
   room.spotifyJamLink = null;
   room.phase = 'lobby';
-  room.songPool = getSongPool(genre);
-  room.artistPool = getArtistPool(genre);
+  room.songPool = [];
+  room.artistPool = []; // Repopulated async by index.js after reset
   room.playedSongs = [];
   room.startedAt = null;
   room.endsAt = null;
@@ -169,22 +171,22 @@ function startCountdown(code) {
 }
 
 // Match a played song against a pick.
+// All rooms now use artist mode — song mode is retained in comments for future re-enablement.
 // ID-based matching is preferred (Spotify IDs are exact and unambiguous).
-// Falls back to title/artist string matching for static pool picks and manual mode.
+// Falls back to artist string matching.
 function songMatchesPick(song, pick, pickMode) {
-  if (pickMode === 'artists') {
-    // ID match: song.artistIds is an array of Spotify artist IDs from now-playing
-    if (pick.id && song.artistIds && song.artistIds.length) {
-      return song.artistIds.includes(pick.id);
-    }
-    // String fallback
-    const pa = (song.artist || '').toLowerCase().split(/\s*[,&]\s*|\s+ft\.?\s+|\s+feat\.?\s+/).map(a => a.trim());
-    return pa.some(a => a === (pick.name || '').toLowerCase().trim());
+  // pickMode is always 'artists' — song mode retired
+  // if (pickMode === 'songs') {
+  //   if (pick.id && song.id) return pick.id === song.id;
+  //   return song.title === pick.title;
+  // }
+
+  // Artist mode: ID match first, then string fallback
+  if (pick.id && song.artistIds && song.artistIds.length) {
+    return song.artistIds.includes(pick.id);
   }
-  // Track ID match
-  if (pick.id && song.id) return pick.id === song.id;
-  // String fallback
-  return song.title === pick.title;
+  const pa = (song.artist || '').toLowerCase().split(/\s*[,&]\s*|\s+ft\.?\s+|\s+feat\.?\s+/).map(a => a.trim());
+  return pa.some(a => a === (pick.name || '').toLowerCase().trim());
 }
 
 function recalcScores(room) {

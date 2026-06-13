@@ -7,7 +7,7 @@ import socket from '../socket.js';
 //   tracks:  { id, title, artist, albumArt }
 //   artists: { id, name }
 
-function useSearch(roomCode, pickMode, musicSource) {
+function useSearch(roomCode, musicSource) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
   const [searching, setSearching] = useState(false);
@@ -18,15 +18,16 @@ function useSearch(roomCode, pickMode, musicSource) {
   const isAudd    = musicSource === 'audd';
   const isSearchable = isSpotify || isAudd;
 
+  // Always search for artists. iTunes artist search also accepts song names
+  // (it finds the artist behind the song), so players can search either way.
   const search = useCallback((q) => {
     if (!q.trim() || !isSearchable) { setResults([]); return; }
     setSearching(true);
     setSearchError(null);
-    const type = pickMode === 'artists' ? 'artist' : 'track';
 
     const url = isSpotify
-      ? `/api/spotify/search?q=${encodeURIComponent(q)}&type=${type}&room=${roomCode}`
-      : `/api/itunes/search?q=${encodeURIComponent(q)}&type=${type}`;
+      ? `/api/spotify/search?q=${encodeURIComponent(q)}&type=artist&room=${roomCode}`
+      : `/api/itunes/search?q=${encodeURIComponent(q)}&type=artist`;
 
     fetch(url)
       .then(r => r.json())
@@ -36,7 +37,7 @@ function useSearch(roomCode, pickMode, musicSource) {
       })
       .catch(() => setSearchError('Search failed'))
       .finally(() => setSearching(false));
-  }, [roomCode, pickMode, musicSource, isSearchable, isSpotify]); // eslint-disable-line
+  }, [roomCode, musicSource, isSearchable, isSpotify]); // eslint-disable-line
 
   const handleQueryChange = (q) => {
     setQuery(q);
@@ -51,21 +52,17 @@ function useSearch(roomCode, pickMode, musicSource) {
 
 // ─── Shared search input + results ───────────────────────────────────────────
 
-function SearchPicker({ roomCode, pickMode, musicSource, pool, selected, onToggle, limit, accentColor = '#6366f1', accentBg = '#312e81', disabledKeys = new Set() }) {
-  const { query, handleQueryChange, results, searching, searchError, setResults, setQuery, isSearchable } = useSearch(roomCode, pickMode, musicSource);
-  const isArtistMode = pickMode === 'artists';
-  const isAudd = musicSource === 'audd';
-  const getKey = (item) => isArtistMode ? (item.id || item.name) : (item.id || item.title);
-  const getLabel = (item) => isArtistMode ? item.name : item.title;
-  const getSub = (item) => isArtistMode ? null : item.artist;
+function SearchPicker({ roomCode, musicSource, pool, selected, onToggle, limit, accentColor = '#6366f1', accentBg = '#312e81', disabledKeys = new Set() }) {
+  const { query, handleQueryChange, results, searching, searchError, setResults, setQuery, isSearchable } = useSearch(roomCode, musicSource);
+  // Always artist mode
+  const getKey = (item) => item.id || item.name;
+  const getLabel = (item) => item.name;
   const isSelected = (item) => selected.some(s => getKey(s) === getKey(item));
   const showResults = isSearchable && query.trim().length > 0;
   const displayList = showResults ? results : pool;
 
-  const searchHint = isAudd
-    ? `Type to search the iTunes catalog, or scroll below for genre picks`
-    : `Type to search the Spotify catalog, or scroll below for genre picks`;
-  const searchPlaceholder = isArtistMode ? 'Search artists...' : 'Search songs...';
+  const searchHint = `Search by artist name or song title to find the artist`;
+  const searchPlaceholder = 'Search artists or songs…';
 
   const s = {
     searchWrap: { position: 'relative', marginBottom: 12 },
@@ -105,7 +102,7 @@ function SearchPicker({ roomCode, pickMode, musicSource, pool, selected, onToggl
           {query && <button style={s.clearBtn} onClick={() => { setQuery(''); setResults([]); }}>✕</button>}
         </div>
       )}
-      {!isSearchable && <div style={s.hint}>Pick from the genre pool below</div>}
+      {!isSearchable && <div style={s.hint}>Pick from the suggested artists below</div>}
       {isSearchable && !query && <div style={s.hint}>{searchHint}</div>}
 
       {searching && <div style={s.searching}>Searching...</div>}
@@ -125,7 +122,6 @@ function SearchPicker({ roomCode, pickMode, musicSource, pool, selected, onToggl
                     {thumb && <img src={thumb} style={s.thumb} alt="" />}
                     <div style={s.textWrap}>
                       <div style={s.itemTitle(sel)}>{sel ? '✓ ' : ''}{getLabel(item)}</div>
-                      {getSub(item) && <div style={s.itemSub}>{getSub(item)}</div>}
                     </div>
                   </div>
                 );
@@ -139,8 +135,8 @@ function SearchPicker({ roomCode, pickMode, musicSource, pool, selected, onToggl
 
 // ─── Selected chips strip ─────────────────────────────────────────────────────
 
-function SelectedChips({ picks, pickMode, onRemove, accentColor, limit }) {
-  const isArtistMode = pickMode === 'artists';
+function SelectedChips({ picks, onRemove, accentColor, limit }) {
+  // Always artist mode — song mode retired
   const s = {
     wrap: { display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 12, minHeight: 32 },
     chip: { display: 'flex', alignItems: 'center', gap: 6, padding: '4px 10px 4px 8px', borderRadius: 16, background: accentColor + '22', border: `1px solid ${accentColor}66`, fontSize: 12, color: accentColor, fontWeight: 600 },
@@ -153,7 +149,7 @@ function SelectedChips({ picks, pickMode, onRemove, accentColor, limit }) {
       {picks.length === 0
         ? <span style={s.empty}>None selected yet ({limit} needed)</span>
         : picks.map((pick, i) => {
-            const label = isArtistMode ? pick.name : pick.title;
+            const label = pick.name;
             const thumb = pick.albumArt || pick.image || null;
             return (
               <span key={pick.id || i} style={s.chip}>
@@ -167,7 +163,6 @@ function SelectedChips({ picks, pickMode, onRemove, accentColor, limit }) {
     </div>
   );
 }
-
 // ─── Progress dots ────────────────────────────────────────────────────────────
 
 function ProgressDots({ count, limit, color }) {
@@ -184,11 +179,9 @@ function ProgressDots({ count, limit, color }) {
 
 function StandardPickScreen({ room }) {
   const [picks, setPicks] = useState([]);
-  const isArtistMode = room.pickMode === 'artists';
-  const isSpotifyRoom = room.musicSource === 'spotify';
-  const isAuddRoom = room.musicSource === 'audd';
-  const pool = isArtistMode ? (room.artistPool || []) : (room.songPool || []);
-  const getKey = (item) => isArtistMode ? (item.id || item.name) : (item.id || item.title);
+  // Always artist mode — song mode retired
+  const pool = room.artistPool || [];
+  const getKey = (item) => item.id || item.name;
   const LIMIT = 5;
 
   const toggle = (item) => {
@@ -207,19 +200,17 @@ function StandardPickScreen({ room }) {
   };
 
   const s = sharedStyles();
-  const searchLabel = isSpotifyRoom ? ' · Spotify search enabled' : isAuddRoom ? ' · iTunes search enabled' : '';
 
   return (
     <div style={s.wrap}>
-      <div style={s.title}>Pick your {LIMIT} {isArtistMode ? 'artists' : 'songs'}</div>
-      <div style={s.sub}>Genre: {room.genre} · {isArtistMode ? 'Artist' : 'Song'} mode{searchLabel}</div>
+      <div style={s.title}>Pick your {LIMIT} artists</div>
+      <div style={s.sub}>{room.playlistName ? `Playlist: ${room.playlistName}` : 'Artist mode'}</div>
 
       <ProgressDots count={picks.length} limit={LIMIT} color="#6366f1" />
-      <SelectedChips picks={picks} pickMode={room.pickMode} onRemove={(item) => toggle(item)} accentColor="#6366f1" limit={LIMIT} />
+      <SelectedChips picks={picks} onRemove={(item) => toggle(item)} accentColor="#6366f1" limit={LIMIT} />
 
       <SearchPicker
         roomCode={room.code}
-        pickMode={room.pickMode}
         musicSource={room.musicSource}
         pool={pool}
         selected={picks}
@@ -243,12 +234,9 @@ function NewlywedPickScreen({ room }) {
   const [mains, setMains] = useState([]);
   const [backups, setBackups] = useState([]);
   const [guesses, setGuesses] = useState([]);
-  const isArtistMode = room.pickMode === 'artists';
-  const isSpotifyRoom = room.musicSource === 'spotify';
-  const isAuddRoom = room.musicSource === 'audd';
-  const pool = isArtistMode ? (room.artistPool || []) : (room.songPool || []);
-  const getKey = (item) => isArtistMode ? (item.id || item.name) : (item.id || item.title);
-  const searchLabel = isSpotifyRoom ? ' · Spotify search enabled' : isAuddRoom ? ' · iTunes search enabled' : '';
+  // Always artist mode — song mode retired
+  const pool = room.artistPool || [];
+  const getKey = (item) => item.id || item.name;
 
   const allCommitted = (currentPhase) => {
     const all = [];
@@ -296,8 +284,8 @@ function NewlywedPickScreen({ room }) {
 
   return (
     <div style={s.wrap}>
-      <div style={s.title}>Newlywed Bingo — {isArtistMode ? 'Artist' : 'Song'} mode</div>
-      <div style={s.sub}>Genre: {room.genre}{searchLabel}</div>
+      <div style={s.title}>Newlywed Bingo — Artist mode</div>
+      <div style={s.sub}>{room.playlistName ? `Playlist: ${room.playlistName}` : 'Artist mode'}</div>
 
       {/* Step bar */}
       <div style={{ display: 'flex', gap: 6, marginBottom: 14 }}>
@@ -314,7 +302,7 @@ function NewlywedPickScreen({ room }) {
       {phase === 'guesses' && (
         <div style={{ display: 'flex', gap: 8, padding: '8px 12px', borderRadius: 8, background: '#1f0617', border: '1px solid #701a4e', marginBottom: 10 }}>
           <span>🔒</span>
-          <span style={{ fontSize: 12, color: '#f9a8d4', lineHeight: 1.4 }}>Hidden from all other players until the end. Predict songs someone else picked.</span>
+          <span style={{ fontSize: 12, color: '#f9a8d4', lineHeight: 1.4 }}>Hidden from all other players until the end. Predict an artist someone else picked.</span>
         </div>
       )}
 
@@ -322,22 +310,21 @@ function NewlywedPickScreen({ room }) {
       {phase !== 'mains' && mains.length > 0 && (
         <div style={s.summaryBox}>
           <div style={s.summaryLabel}>Your mains</div>
-          {mains.map((item, i) => <span key={i} style={s.chip('#6366f1')}>{isArtistMode ? item.name : item.title}</span>)}
+          {mains.map((item, i) => <span key={i} style={s.chip('#6366f1')}>{item.name}</span>)}
         </div>
       )}
       {phase === 'guesses' && backups.length > 0 && (
         <div style={s.summaryBox}>
           <div style={s.summaryLabel}>Your backups</div>
-          {backups.map((item, i) => <span key={i} style={s.chip('#f59e0b')}>{isArtistMode ? item.name : item.title}</span>)}
+          {backups.map((item, i) => <span key={i} style={s.chip('#f59e0b')}>{item.name}</span>)}
         </div>
       )}
 
       <ProgressDots count={cfg.selected.length} limit={cfg.limit} color={cfg.color} />
-      <SelectedChips picks={cfg.selected} pickMode={room.pickMode} onRemove={toggle} accentColor={cfg.color} limit={cfg.limit} />
+      <SelectedChips picks={cfg.selected} onRemove={toggle} accentColor={cfg.color} limit={cfg.limit} />
 
       <SearchPicker
         roomCode={room.code}
-        pickMode={room.pickMode}
         musicSource={room.musicSource}
         pool={pool}
         selected={cfg.selected}
@@ -365,12 +352,9 @@ function GongShowPickScreen({ room }) {
   const [phase, setPhase] = useState('mains');
   const [mains, setMains] = useState([]);
   const [gongs, setGongs] = useState([]);
-  const isArtistMode = room.pickMode === 'artists';
-  const isSpotifyRoom = room.musicSource === 'spotify';
-  const isAuddRoom = room.musicSource === 'audd';
-  const pool = isArtistMode ? (room.artistPool || []) : (room.songPool || []);
-  const getKey = (item) => isArtistMode ? (item.id || item.name) : (item.id || item.title);
-  const searchLabel = isSpotifyRoom ? ' · Spotify search enabled' : isAuddRoom ? ' · iTunes search enabled' : '';
+  // Always artist mode — song mode retired
+  const pool = room.artistPool || [];
+  const getKey = (item) => item.id || item.name;
 
   const mainKeys = new Set(mains.map(getKey));
   const gongKeys = new Set(gongs.map(getKey));
@@ -402,8 +386,8 @@ function GongShowPickScreen({ room }) {
 
   return (
     <div style={s.wrap}>
-      <div style={s.title}>Gong Show Bingo — {isArtistMode ? 'Artist' : 'Song'} mode</div>
-      <div style={s.sub}>Genre: {room.genre}{searchLabel}</div>
+      <div style={s.title}>Gong Show Bingo — Artist mode</div>
+      <div style={s.sub}>{room.playlistName ? `Playlist: ${room.playlistName}` : 'Artist mode'}</div>
 
       {/* Phase tabs */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
@@ -424,23 +408,22 @@ function GongShowPickScreen({ room }) {
       {phase === 'gongs' && (
         <div style={{ display: 'flex', gap: 8, padding: '10px 12px', borderRadius: 8, background: '#1f0a0a', border: '1px solid #7f1d1d', marginBottom: 10 }}>
           <span>⚠️</span>
-          <span style={{ fontSize: 12, color: '#fca5a5', lineHeight: 1.4 }}>You can't gong your own main picks. Two gongers on the same song cancel each other and both lose a point.</span>
+          <span style={{ fontSize: 12, color: '#fca5a5', lineHeight: 1.4 }}>You can't gong your own main picks. Two gongers on the same artist cancel each other and both lose a point.</span>
         </div>
       )}
 
       {phase === 'gongs' && mains.length > 0 && (
         <div style={s.summaryBox}>
           <div style={s.summaryLabel}>Your mains</div>
-          {mains.map((item, i) => <span key={i} style={s.chip('#6366f1')}>{isArtistMode ? item.name : item.title}</span>)}
+          {mains.map((item, i) => <span key={i} style={s.chip('#6366f1')}>{item.name}</span>)}
         </div>
       )}
 
       <ProgressDots count={currentPicks.length} limit={currentLimit} color={accentColor} />
-      <SelectedChips picks={currentPicks} pickMode={room.pickMode} onRemove={currentToggle} accentColor={accentColor} limit={currentLimit} />
+      <SelectedChips picks={currentPicks} onRemove={currentToggle} accentColor={accentColor} limit={currentLimit} />
 
       <SearchPicker
         roomCode={room.code}
-        pickMode={room.pickMode}
         musicSource={room.musicSource}
         pool={pool}
         selected={currentPicks}
@@ -453,7 +436,7 @@ function GongShowPickScreen({ room }) {
 
       {phase === 'mains' && mains.length === 10 && (
         <button style={{ ...s.btn(true, '#6366f1'), marginBottom: 8 }} onClick={() => setPhase('gongs')}>
-          Next: Pick gong songs →
+          Next: Pick gong artists →
         </button>
       )}
       {phase === 'gongs' && (
@@ -606,11 +589,10 @@ function DJBattlePickScreen({ room, playerId, isHost }) {
       )}
 
       <ProgressDots count={picks.length} limit={LIMIT} color={purple} />
-      <SelectedChips picks={picks} pickMode="artists" onRemove={(item) => toggle(item)} accentColor={purple} limit={LIMIT} />
+      <SelectedChips picks={picks} onRemove={(item) => toggle(item)} accentColor={purple} limit={LIMIT} />
 
       <SearchPicker
         roomCode={room.code}
-        pickMode="artists"
         musicSource={room.musicSource}
         pool={pool}
         selected={picks}

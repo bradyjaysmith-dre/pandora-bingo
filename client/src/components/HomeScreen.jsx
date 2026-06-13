@@ -44,10 +44,10 @@ export default function HomeScreen({ spotifyConnected, onLeaderboard }) {
   const [mode, setMode] = useState('home');
   const [name, setName] = useState('');
   const [roomCode, setRoomCode] = useState('');
-  const [genre, setGenre] = useState('');
+  // const [genre, setGenre] = useState(''); // Genre picker retired — pool driven by playlist name
   const [matchTarget, setMatchTarget] = useState(5);
   const [timeLimit, setTimeLimit] = useState(15);
-  const [pickMode, setPickMode] = useState('artists');
+  // const [pickMode, setPickMode] = useState('artists'); // Song mode retired — always artists
   const [musicSource, setMusicSource] = useState('manual');
   const [gameMode, setGameMode] = useState('standard');
   const [blindMode, setBlindMode] = useState(false);
@@ -71,10 +71,10 @@ export default function HomeScreen({ spotifyConnected, onLeaderboard }) {
       try {
         const s = JSON.parse(saved);
         if (s.name) setName(s.name);
-        if (s.genre) setGenre(s.genre);
+        // if (s.genre) setGenre(s.genre); // Genre retired
         if (s.matchTarget) setMatchTarget(s.matchTarget);
         if (s.timeLimit) setTimeLimit(s.timeLimit);
-        if (s.pickMode) setPickMode(s.pickMode);
+        // if (s.pickMode) setPickMode(s.pickMode); // Song mode retired
         if (s.musicSource) setMusicSource(s.musicSource);
         if (s.gameMode) setGameMode(s.gameMode);
         if (s.blindMode !== undefined) setBlindMode(s.blindMode);
@@ -208,19 +208,24 @@ export default function HomeScreen({ spotifyConnected, onLeaderboard }) {
 
   const connectSpotify = () => {
     sessionStorage.setItem('pandora_pre_spotify', JSON.stringify({
-      name, genre, matchTarget, timeLimit, pickMode, musicSource, gameMode, blindMode,
+      name, matchTarget, timeLimit, musicSource, gameMode, blindMode,
       djPickCount, playlistName, playlistHint,
+      // genre and pickMode retired
     }));
     window.location.href = '/auth/spotify';
   };
 
   const hostGame = () => {
     if (!name.trim()) { alert('Enter your name'); return; }
-    if (!genre) { alert('Select a genre'); return; }
+    if (!playlistName.trim()) { alert('Enter a playlist name'); return; }
     if (musicSource === 'spotify' && !spotifyConnected) { alert('Connect your Spotify account first'); return; }
-    // If somehow spotify was selected but is no longer available, fall back to manual
     const resolvedSource = (musicSource === 'spotify' && !spotifyAvailable) ? 'manual' : musicSource;
-    socket.emit('host:create', { hostName: name.trim(), genre, matchTarget, timeLimit, pickMode, musicSource: resolvedSource, gameMode, blindMode, djPickCount, playlistName: playlistName.trim(), playlistHint: playlistHint.trim() });
+    socket.emit('host:create', {
+      hostName: name.trim(), matchTarget, timeLimit,
+      musicSource: resolvedSource, gameMode, blindMode,
+      djPickCount, playlistName: playlistName.trim(), playlistHint: playlistHint.trim(),
+      // pickMode always 'artists' — set server-side; genre retired
+    });
   };
 
   const joinGame = () => {
@@ -411,11 +416,12 @@ export default function HomeScreen({ spotifyConnected, onLeaderboard }) {
         )}
 
         <div style={s.divider} />
+        {/* ── Pick mode retired — artist mode only ──────────────────────────
         <label style={s.label}>Pick mode</label>
         {gameMode === 'djbattle' ? (
           <div style={{ padding: '10px 14px', borderRadius: 8, background: 'rgba(168,85,247,0.08)', border: '1px solid rgba(168,85,247,0.25)', marginBottom: 8 }}>
             <div style={{ fontSize: 13, color: '#a855f7', fontWeight: 700 }}>Artist mode only</div>
-            <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>DJ Battle always uses artist mode — players predict which artists will appear in the playlist.</div>
+            <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>DJ Battle always uses artist mode.</div>
           </div>
         ) : (
           <div style={s.toggle}>
@@ -423,22 +429,29 @@ export default function HomeScreen({ spotifyConnected, onLeaderboard }) {
             <button style={s.toggleBtn(pickMode === 'artists')} onClick={() => setPickMode('artists')}>Artists</button>
           </div>
         )}
-        <div style={s.desc}>
-          {gameMode === 'djbattle'
-            ? 'Players pick artists they think will appear in the host\'s playlist. A match occurs when any song by that artist plays.'
-            : pickMode === 'songs'
-              ? 'Players pick specific songs they predict will play.'
-              : 'Players pick artists. A match occurs when any song by that artist plays.'}
-          {gameMode === 'gongshow' && ' In Gong Show mode you also pick 5 secret gong songs.'}
-          {gameMode === 'newlywed' && ' In Newlywed mode you also pick backups and secret guesses.'}
-        </div>
+        ── End pick mode ── */}
 
+        {/* ── Genre picker retired — pool driven by playlist name ────────────
         <label style={s.label}>Genre</label>
         <div style={s.genreGrid}>
           {GENRES.map(g => (
             <button key={g} style={s.genreBtn(genre === g)} onClick={() => setGenre(g)}>{g}</button>
           ))}
         </div>
+        ── End genre picker ── */}
+
+        {/* ── Universal playlist name (all modes) ── */}
+        {gameMode !== 'djbattle' && (
+          <>
+            <label style={s.label}>Playlist name <span style={{ color: C.muted, fontWeight: 400, textTransform: 'none', fontSize: 10 }}>(used to suggest artists to players)</span></label>
+            <input
+              style={s.input}
+              value={playlistName}
+              onChange={e => setPlaylistName(e.target.value)}
+              placeholder="e.g. 2000s Hip-Hop Throwback"
+            />
+          </>
+        )}
 
         <div style={s.row}>
           <div style={{ flex: 1 }}>
