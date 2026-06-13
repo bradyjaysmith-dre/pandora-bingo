@@ -1,15 +1,17 @@
 import React, { useState, useEffect } from 'react';
 
-const GENRES = ['Pop', 'Hip-Hop', 'Rock', 'R&B', 'Country', 'Electronic'];
+// const GENRES = ['Pop', 'Hip-Hop', 'Rock', 'R&B', 'Country', 'Electronic']; // Genre picker retired
 
 export default function EndScreen({ room, playerId, isHost, onPlayAgain, onLeave }) {
-  const [genre, setGenre] = useState(room ? room.genre : '');
+  const [playlistName, setPlaylistName] = useState(room ? room.playlistName || '' : '');
   const [matchTarget, setMatchTarget] = useState(room ? room.matchTarget : 5);
-  const [timeLimit, setTimeLimit] = useState(room ? room.timeLimit : 15);
-  const [pickMode, setPickMode] = useState(room ? room.pickMode : 'artists');
+  const [timeLimit, setTimeLimit] = useState(room ? room.timeLimit : 60);
+  // const [pickMode, setPickMode] = useState(room ? room.pickMode : 'artists'); // Song mode retired
   const [musicSource, setMusicSource] = useState(room ? room.musicSource : 'manual');
   const [gameMode, setGameMode] = useState(room ? room.gameMode : 'standard');
   const [blindMode, setBlindMode] = useState(room ? room.blindMode : false);
+  const [djPickCount, setDjPickCount] = useState(room ? room.djPickCount || 5 : 5);
+  const [playlistHint, setPlaylistHint] = useState(room ? room.playlistHint || '' : '');
   const [showSettings, setShowSettings] = useState(false);
   const [spotifyAvailable, setSpotifyAvailable] = useState(false);
 
@@ -21,8 +23,14 @@ export default function EndScreen({ room, playerId, isHost, onPlayAgain, onLeave
   }, []);
 
   if (!room) return null;
-  const sorted = [...room.players].sort((a, b) => b.score - a.score);
+  const isDJBattle = room.gameMode === 'djbattle';
+  const sorted = [...room.players]
+    .filter(p => isDJBattle ? p.id !== room.hostId : true)
+    .sort((a, b) => b.score - a.score);
   const isWinner = room.winner && room.winner.id === playerId;
+  const hostWon = room.winner && room.winner.isHostWin;
+  const winnerName = hostWon ? `🎧 ${room.winner.name} (DJ)` : (room.winner ? room.winner.name : 'Nobody');
+  const winnerScore = hostWon ? room.hostScore : (room.winner ? room.winner.score : 0);
 
   const s = {
     wrap: { maxWidth:500, margin:'0 auto', padding:16, paddingTop:40 },
@@ -56,20 +64,27 @@ export default function EndScreen({ room, playerId, isHost, onPlayAgain, onLeave
   };
 
   const handlePlayAgain = () => {
-    onPlayAgain({ genre, matchTarget, timeLimit, pickMode, musicSource, gameMode, blindMode });
+    onPlayAgain({ matchTarget, timeLimit, musicSource, gameMode, blindMode, djPickCount, playlistName, playlistHint });
   };
 
   return (
     <div style={s.wrap}>
       <div style={s.banner}>
         {room.coinFlip && <div style={s.winSub}>Tied: {room.tiedPlayers ? room.tiedPlayers.join(' vs ') : ''} — coin flip!</div>}
-        <div style={s.winName}>{room.winner ? room.winner.name : 'Nobody'} wins!</div>
-        <div style={s.winSub}>{room.coinFlip ? 'Won the coin flip' : (room.winner ? `${room.winner.score} matches` : '')}</div>
-        {isWinner && <div style={{ fontSize:32, marginTop:8 }}>🎉 You won!</div>}
+        <div style={s.winName}>{winnerName} wins!</div>
+        <div style={s.winSub}>{room.coinFlip ? 'Won the coin flip' : (room.winner ? `${winnerScore} pts` : '')}</div>
+        {isWinner && !hostWon && <div style={{ fontSize:32, marginTop:8 }}>🎉 You won!</div>}
+        {hostWon && isHost && <div style={{ fontSize:32, marginTop:8 }}>🎧 You stumped them!</div>}
       </div>
 
       <div style={s.card}>
         <div style={s.title}>Final scores</div>
+        {isDJBattle && (
+          <div style={{ ...s.scoreRow, borderBottom: '1px solid rgba(168,85,247,0.3)' }}>
+            <span style={{ ...s.scoreName, color: '#a855f7' }}>🎧 {room.players.find(p => p.id === room.hostId)?.name} (DJ)</span>
+            <span style={{ ...s.scoreVal, color: '#a855f7' }}>{room.hostScore || 0} pts</span>
+          </div>
+        )}
         {sorted.map((p, i) => (
           <div key={p.id} style={s.scoreRow}>
             <span style={s.scoreName}>{i+1}. {p.name}{p.id === playerId ? ' (you)' : ''}</span>
@@ -91,7 +106,7 @@ export default function EndScreen({ room, playerId, isHost, onPlayAgain, onLeave
               <label style={s.label}>Game mode</label>
               <div style={s.gameModeCard(gameMode==='standard','#6366f1')} onClick={() => setGameMode('standard')}>
                 <div style={s.gameModeTitle(gameMode==='standard','#a5b4fc')}>Standard</div>
-                <div style={s.gameModeSub}>Pick 5 songs or artists, first to match wins.</div>
+                <div style={s.gameModeSub}>Pick 5 artists, first to match wins.</div>
               </div>
               <div style={s.gameModeCard(gameMode==='newlywed','#f59e0b')} onClick={() => setGameMode('newlywed')}>
                 <div style={s.gameModeTitle(gameMode==='newlywed','#fbbf24')}>Newlywed Bingo</div>
@@ -101,6 +116,10 @@ export default function EndScreen({ room, playerId, isHost, onPlayAgain, onLeave
                 <div style={s.gameModeTitle(gameMode==='gongshow','#f87171')}>Gong Show Bingo</div>
                 <div style={s.gameModeSub}>10 mains + 5 secret gong picks.</div>
               </div>
+              <div style={s.gameModeCard(gameMode==='djbattle','#a855f7')} onClick={() => setGameMode('djbattle')}>
+                <div style={s.gameModeTitle(gameMode==='djbattle','#c084fc')}>DJ Battle</div>
+                <div style={s.gameModeSub}>Host plays their playlist, players guess artists.</div>
+              </div>
 
               {gameMode === 'gongshow' && (
                 <div style={s.checkRow} onClick={() => setBlindMode(!blindMode)}>
@@ -109,32 +128,50 @@ export default function EndScreen({ room, playerId, isHost, onPlayAgain, onLeave
                 </div>
               )}
 
+              <label style={s.label}>Playlist name</label>
+              <input
+                style={{ ...s.numInput, width:'100%', boxSizing:'border-box', marginBottom:8 }}
+                value={playlistName}
+                onChange={e => setPlaylistName(e.target.value)}
+                placeholder="e.g. 2000s Hip-Hop Throwback"
+              />
+
+              {gameMode === 'djbattle' && (
+                <>
+                  <label style={s.label}>Hint for players <span style={{ color:'#475569', fontWeight:400, textTransform:'none' }}>(optional)</span></label>
+                  <input
+                    style={{ ...s.numInput, width:'100%', boxSizing:'border-box', marginBottom:8 }}
+                    value={playlistHint}
+                    onChange={e => setPlaylistHint(e.target.value)}
+                    placeholder="e.g. All artists who peaked in the 2000s"
+                  />
+                  <label style={s.label}>Artists per player</label>
+                  <input type="number"
+                    style={{ ...s.numInput, width:'100%', boxSizing:'border-box', marginBottom:8 }}
+                    min={1} max={15} value={djPickCount}
+                    onChange={e => setDjPickCount(Math.max(1, Math.min(15, parseInt(e.target.value)||1)))}
+                  />
+                </>
+              )}
+
               <label style={s.label}>Music source</label>
               <div style={s.sourceCard(musicSource==='manual')} onClick={() => setMusicSource('manual')}>
                 <div style={s.sourceTitle(musicSource==='manual')}>Manual</div>
-                <div style={s.sourceSub}>Host marks songs as they play. Works with any music source.</div>
+                <div style={s.sourceSub}>Host marks songs as they play.</div>
               </div>
               <div style={s.sourceCard(musicSource==='audd')} onClick={() => setMusicSource('audd')}>
                 <div style={s.sourceTitle(musicSource==='audd')}>🎙 Auto-detect (mic)</div>
-                <div style={s.sourceSub}>Identifies songs via microphone. Works with any music app.</div>
+                <div style={s.sourceSub}>Identifies songs via microphone.</div>
               </div>
               {spotifyAvailable && (
                 <div style={s.sourceCard(musicSource==='spotify')} onClick={() => setMusicSource('spotify')}>
                   <div style={s.sourceTitle(musicSource==='spotify')}>Spotify</div>
-                  <div style={s.sourceSub}>Auto-detects songs from Spotify. Requires Spotify account.</div>
+                  <div style={s.sourceSub}>Auto-detects songs from Spotify.</div>
                 </div>
               )}
 
-              <label style={s.label}>Pick mode</label>
-              <div style={s.toggle}>
-                <button style={s.toggleBtn(pickMode==='songs')} onClick={() => setPickMode('songs')}>Songs</button>
-                <button style={s.toggleBtn(pickMode==='artists')} onClick={() => setPickMode('artists')}>Artists</button>
-              </div>
-
-              <label style={s.label}>Genre</label>
-              <div style={s.genreGrid}>
-                {GENRES.map(g => <button key={g} style={s.genreBtn(genre===g)} onClick={() => setGenre(g)}>{g}</button>)}
-              </div>
+              {/* Pick mode toggle retired — always artist mode */}
+              {/* Genre picker retired — pool driven by playlist name */}
 
               <div style={s.row}>
                 <div style={{ flex:1 }}>
@@ -143,7 +180,7 @@ export default function EndScreen({ room, playerId, isHost, onPlayAgain, onLeave
                 </div>
                 <div style={{ flex:1 }}>
                   <label style={s.label}>Time limit (min)</label>
-                  <input type="number" style={s.numInput} min={5} max={60} step={5} value={timeLimit} onChange={e => setTimeLimit(parseInt(e.target.value)||15)} />
+                  <input type="number" style={s.numInput} min={5} max={60} step={5} value={timeLimit} onChange={e => setTimeLimit(parseInt(e.target.value)||60)} />
                 </div>
               </div>
             </div>
