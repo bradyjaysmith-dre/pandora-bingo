@@ -499,6 +499,15 @@ io.on('connection', (socket) => {
     io.to(roomCode).emit('game:updated', { room: result.room });
   });
 
+  socket.on('host:set_jam_link', ({ link }) => {
+    const { roomCode } = socket.data;
+    const room = game.getRoom(roomCode);
+    if (!room) return;
+    // Accept a valid Spotify URL or clear it (empty string → null)
+    room.spotifyJamLink = link && link.trim() ? link.trim() : null;
+    io.to(roomCode).emit('game:updated', { room });
+  });
+
   socket.on('host:end_game', () => {
     const { roomCode } = socket.data;
     stopSpotifyPolling(roomCode);

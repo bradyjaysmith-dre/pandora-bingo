@@ -378,6 +378,116 @@ function cardStyles() {
   };
 }
 
+// ─── Spotify Jam (Group Session) components ───────────────────────────────────
+
+// Host panel — shown in the Spotify host tab.
+// Host pastes a Spotify Jam link; it's broadcast to all players via game:updated.
+function SpotifyJamHostPanel({ room }) {
+  const [input, setInput] = useState(room.spotifyJamLink || '');
+  const [saved, setSaved] = useState(!!room.spotifyJamLink);
+
+  const handleSave = () => {
+    socket.emit('host:set_jam_link', { link: input });
+    setSaved(true);
+  };
+  const handleClear = () => {
+    setInput('');
+    setSaved(false);
+    socket.emit('host:set_jam_link', { link: '' });
+  };
+
+  return (
+    <div style={{
+      padding: '12px 14px', borderRadius: 8, marginBottom: 12,
+      background: 'rgba(29,185,84,0.07)', border: '1px solid rgba(29,185,84,0.25)',
+    }}>
+      <div style={{ fontSize: 12, fontWeight: 700, color: '#1DB954', marginBottom: 6 }}>
+        🎵 Spotify Jam — sync players
+      </div>
+      {!saved ? (
+        <>
+          <div style={{ fontSize: 12, color: GC.muted, marginBottom: 8, lineHeight: 1.5 }}>
+            In your Spotify app: tap the speaker icon → <strong style={{ color: GC.text }}>Start a Jam</strong> → Share → copy the link and paste it below.
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <input
+              style={{
+                flex: 1, padding: '8px 10px', borderRadius: 6,
+                background: GC.alt, color: GC.text,
+                border: '1px solid rgba(29,185,84,0.4)',
+                fontSize: 13, outline: 'none',
+              }}
+              value={input}
+              onChange={e => { setInput(e.target.value); setSaved(false); }}
+              placeholder="https://spotify.com/jam/..."
+            />
+            <button
+              onClick={handleSave}
+              disabled={!input.trim()}
+              style={{
+                padding: '8px 14px', borderRadius: 6, border: 'none',
+                background: input.trim() ? '#1DB954' : '#334155',
+                color: input.trim() ? '#fff' : GC.muted,
+                fontWeight: 700, fontSize: 13, cursor: input.trim() ? 'pointer' : 'not-allowed',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              Share
+            </button>
+          </div>
+        </>
+      ) : (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+          <div style={{ fontSize: 13, color: '#86efac', fontWeight: 600 }}>
+            ✓ Jam link shared with players
+          </div>
+          <button
+            onClick={handleClear}
+            style={{
+              padding: '6px 12px', borderRadius: 6, fontSize: 12, fontWeight: 600,
+              background: 'transparent', border: `1px solid ${GC.border}`,
+              color: GC.muted, cursor: 'pointer',
+            }}
+          >
+            Clear
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Player banner — shown above the tabs when host has shared a Jam link.
+function SpotifyJamPlayerBanner({ link }) {
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
+      padding: '10px 14px', borderRadius: 8, marginBottom: 12,
+      background: 'rgba(29,185,84,0.1)', border: '1px solid rgba(29,185,84,0.35)',
+    }}>
+      <div>
+        <div style={{ fontSize: 13, fontWeight: 700, color: '#1DB954', marginBottom: 2 }}>
+          🎵 Host started a Spotify Jam
+        </div>
+        <div style={{ fontSize: 12, color: GC.muted }}>Join to hear the same music in sync</div>
+      </div>
+      <a
+        href={link}
+        target="_blank"
+        rel="noopener noreferrer"
+        style={{
+          padding: '8px 14px', borderRadius: 6,
+          background: '#1DB954', color: '#fff',
+          fontWeight: 700, fontSize: 13,
+          textDecoration: 'none', whiteSpace: 'nowrap', flexShrink: 0,
+        }}
+      >
+        Join Jam ↗
+      </a>
+    </div>
+  );
+}
+
 // ─── Main GameScreen ──────────────────────────────────────────────────────────
 
 export default function GameScreen({ room, playerId, isHost, spotifyTokens, nowPlaying }) {
@@ -846,6 +956,11 @@ export default function GameScreen({ room, playerId, isHost, spotifyTokens, nowP
         </div>
       )}
 
+      {/* ── Spotify Jam join banner (visible to all players when host sets a link) ── */}
+      {isSpotifyMode && !isHost && room.spotifyJamLink && (
+        <SpotifyJamPlayerBanner link={room.spotifyJamLink} />
+      )}
+
       <div style={s.tabs}>
         <button style={s.tab(tab==='card')} onClick={() => setTab('card')}>My card</button>
         <button style={s.tab(tab==='scores')} onClick={() => setTab('scores')}>Scores</button>
@@ -893,6 +1008,10 @@ export default function GameScreen({ room, playerId, isHost, spotifyTokens, nowP
           {isSpotifyMode ? (
             <>
               <div style={{fontSize:12,color:'#1DB954',marginBottom:8}}>Spotify is auto-detecting songs.</div>
+
+              {/* ── Spotify Jam (Group Session) ── */}
+              <SpotifyJamHostPanel room={room} />
+
               {nowPlaying && (
                 <div style={{...s.nowPlaying,marginBottom:12}}>
                   {nowPlaying.albumArt && <img src={nowPlaying.albumArt} style={s.albumArt} alt="album" />}

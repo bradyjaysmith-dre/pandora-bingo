@@ -29,6 +29,7 @@ function createRoom({ hostId, hostName, genre, matchTarget, timeLimit, pickMode,
     playlistName: playlistName || '',
     playlistHint: playlistHint || '',
     hostScore: 0, // DJ Battle: host points (songs nobody guessed)
+    spotifyJamLink: null, // Spotify Group Session (Jam) link shared by host
     phase: 'lobby',
     players: [makePlayer(hostId, hostName)],
     songPool: getSongPool(genre),
@@ -90,6 +91,7 @@ function resetRoom(code, { genre, matchTarget, timeLimit, pickMode, musicSource,
   room.playlistName = playlistName || '';
   room.playlistHint = playlistHint || '';
   room.hostScore = 0;
+  room.spotifyJamLink = null;
   room.phase = 'lobby';
   room.songPool = getSongPool(genre);
   room.artistPool = getArtistPool(genre);
