@@ -46,7 +46,7 @@ export default function HomeScreen({ spotifyConnected, onLeaderboard }) {
   const [roomCode, setRoomCode] = useState('');
   // const [genre, setGenre] = useState(''); // Genre picker retired — pool driven by playlist name
   const [matchTarget, setMatchTarget] = useState(5);
-  const [timeLimit, setTimeLimit] = useState(15);
+  const [timeLimit, setTimeLimit] = useState(60);
   // const [pickMode, setPickMode] = useState('artists'); // Song mode retired — always artists
   const [musicSource, setMusicSource] = useState('manual');
   const [gameMode, setGameMode] = useState('standard');
