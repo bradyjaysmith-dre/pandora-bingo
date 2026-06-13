@@ -48,7 +48,7 @@ export default function HomeScreen({ spotifyConnected, onLeaderboard }) {
   const [matchTarget, setMatchTarget] = useState(5);
   const [timeLimit, setTimeLimit] = useState(60);
   // const [pickMode, setPickMode] = useState('artists'); // Song mode retired — always artists
-  const [musicSource, setMusicSource] = useState('manual');
+  const [musicSource, setMusicSource] = useState('audd'); // Default to mic detection
   const [gameMode, setGameMode] = useState('standard');
   const [blindMode, setBlindMode] = useState(false);
   const [djPickCount, setDjPickCount] = useState(5);
@@ -58,6 +58,7 @@ export default function HomeScreen({ spotifyConnected, onLeaderboard }) {
   const [djPenaltyEnabled, setDjPenaltyEnabled] = useState(false);
   const [djPenaltyAmount, setDjPenaltyAmount] = useState(1.0);
   const [spotifyAvailable, setSpotifyAvailable] = useState(false);
+  const [spotifyNotWhitelisted, setSpotifyNotWhitelisted] = useState(false);
 
   // Fetch server config to determine which music sources to show
   useEffect(() => {
@@ -69,6 +70,16 @@ export default function HomeScreen({ spotifyConnected, onLeaderboard }) {
 
   // Restore host settings saved before Spotify OAuth redirect
   useEffect(() => {
+    // Check if Spotify returned a whitelist error
+    const spotifyError = sessionStorage.getItem('pandora_spotify_error');
+    if (spotifyError) {
+      try {
+        const e = JSON.parse(spotifyError);
+        if (e.notWhitelisted) setSpotifyNotWhitelisted(true);
+      } catch {}
+      sessionStorage.removeItem('pandora_spotify_error');
+    }
+
     const saved = sessionStorage.getItem('pandora_pre_spotify');
     if (saved) {
       try {
@@ -332,7 +343,7 @@ export default function HomeScreen({ spotifyConnected, onLeaderboard }) {
           <div style={s.gameModeSub}>Pick 10 songs + 5 secret gong songs. Gong another player's pick to cancel their point — but duplicate gongers cancel each other and lose a point.</div>
         </div>
 
-        <div style={s.gameModeCard(gameMode === 'djbattle', '#a855f7')} onClick={() => { setGameMode('djbattle'); }}>
+        <div style={s.gameModeCard(gameMode === 'djbattle', '#a855f7')} onClick={() => { setGameMode('djbattle'); setPickMode('artists'); setTimeLimit(40); }}>
           <div style={s.gameModeTitle(gameMode === 'djbattle', '#a855f7')}>
             DJ Battle
             <span style={s.badge('rgba(168,85,247,0.15)', '#a855f7', 'rgba(168,85,247,0.4)')}>NEW</span>
@@ -367,7 +378,7 @@ export default function HomeScreen({ spotifyConnected, onLeaderboard }) {
             />
             <div style={{ fontSize: 11, color: C.muted, marginTop: 4, marginBottom: 10 }}>How many artists each player picks (1–15). Default: 5.</div>
 
-            <label style={{ ...s.label, color: '#a855f7' }}>DJ score target <span style={{ color: C.muted, fontWeight: 400, textTransform: 'none' }}>(separate from player target)</span></label>
+            <label style={{ ...s.label, color: '#a855f7' }}>DJ score target <span style={{ color: C.muted, fontWeight: 400, textTransform: 'none' }}>(DJ's own win threshold)</span></label>
             <input
               type="number"
               style={{ ...s.numInput, width: '100%', boxSizing: 'border-box', marginBottom: 0, border: '1px solid rgba(168,85,247,0.4)' }}
@@ -375,7 +386,7 @@ export default function HomeScreen({ spotifyConnected, onLeaderboard }) {
               value={djHostTarget}
               onChange={e => setDjHostTarget(Math.max(1, parseInt(e.target.value) || 1))}
             />
-            <div style={{ fontSize: 11, color: C.muted, marginTop: 4, marginBottom: 10 }}>DJ wins when reaching this score. Players race to "Points to win" (below). Default: 10.</div>
+            <div style={{ fontSize: 11, color: C.muted, marginTop: 4, marginBottom: 10 }}>DJ wins when reaching this score. Default: 10.</div>
 
             <div
               style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', borderRadius: 8, background: 'rgba(168,85,247,0.06)', border: `1px solid ${djPenaltyEnabled ? 'rgba(168,85,247,0.5)' : 'rgba(168,85,247,0.2)'}`, marginBottom: 6, cursor: 'pointer' }}
@@ -403,7 +414,7 @@ export default function HomeScreen({ spotifyConnected, onLeaderboard }) {
                     if (!isNaN(v)) setDjPenaltyAmount(Math.round(Math.max(0.1, Math.min(5, v)) * 10) / 10);
                   }}
                 />
-                <div style={{ fontSize: 11, color: C.muted, marginTop: 4 }}>Default: 1.0. One decimal place (e.g. 0.5, 1.0, 2.0).</div>
+                <div style={{ fontSize: 11, color: C.muted, marginTop: 4 }}>Default: 1.0. One decimal place allowed.</div>
               </>
             )}
           </div>
@@ -441,11 +452,29 @@ export default function HomeScreen({ spotifyConnected, onLeaderboard }) {
         )}
         {spotifyAvailable && (
           <>
-            <div style={s.sourceCard(musicSource === 'spotify')} onClick={() => setMusicSource('spotify')}>
-              <div style={s.sourceTitle(musicSource === 'spotify')}>Spotify</div>
-              <div style={s.sourceSub}>Auto-detects songs from Spotify. Requires Spotify account.</div>
+            <div
+              style={{
+                ...s.sourceCard(musicSource === 'spotify' && !spotifyNotWhitelisted),
+                opacity: spotifyNotWhitelisted ? 0.5 : 1,
+                cursor: spotifyNotWhitelisted ? 'not-allowed' : 'pointer',
+              }}
+              onClick={() => !spotifyNotWhitelisted && setMusicSource('spotify')}
+            >
+              <div style={s.sourceTitle(musicSource === 'spotify' && !spotifyNotWhitelisted)}>
+                Spotify {spotifyNotWhitelisted && <span style={{ fontSize: 11, color: '#f87171', fontWeight: 600 }}>— not whitelisted</span>}
+              </div>
+              <div style={s.sourceSub}>
+                {spotifyNotWhitelisted
+                  ? 'Your account is not whitelisted for this app. Use mic detection instead.'
+                  : 'Auto-detects songs from Spotify. Requires Spotify account.'}
+              </div>
             </div>
-            {musicSource === 'spotify' && (
+            {spotifyNotWhitelisted && (
+              <div style={{ padding: '8px 12px', borderRadius: 8, background: 'rgba(248,113,113,0.07)', border: '1px solid rgba(248,113,113,0.25)', marginBottom: 8, fontSize: 12, color: '#fca5a5', lineHeight: 1.5 }}>
+                Your Spotify account isn't approved for this app's developer mode. Mic detection will be used instead — it works with any music source.
+              </div>
+            )}
+            {musicSource === 'spotify' && !spotifyNotWhitelisted && (
               <div style={{ marginBottom: 16 }}>
                 {spotifyConnected ? (
                   <div style={s.spotifyBadge}>
