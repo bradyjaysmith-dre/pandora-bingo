@@ -12,6 +12,9 @@ export default function EndScreen({ room, playerId, isHost, onPlayAgain, onLeave
   const [blindMode, setBlindMode] = useState(room ? room.blindMode : false);
   const [djPickCount, setDjPickCount] = useState(room ? room.djPickCount || 5 : 5);
   const [playlistHint, setPlaylistHint] = useState(room ? room.playlistHint || '' : '');
+  const [djHostTarget, setDjHostTarget] = useState(room ? room.djHostTarget || 10 : 10);
+  const [djPenaltyEnabled, setDjPenaltyEnabled] = useState(room ? room.djPenaltyEnabled || false : false);
+  const [djPenaltyAmount, setDjPenaltyAmount] = useState(room ? room.djPenaltyAmount != null ? room.djPenaltyAmount : 1.0 : 1.0);
   const [showSettings, setShowSettings] = useState(false);
   const [spotifyAvailable, setSpotifyAvailable] = useState(false);
 
@@ -64,7 +67,7 @@ export default function EndScreen({ room, playerId, isHost, onPlayAgain, onLeave
   };
 
   const handlePlayAgain = () => {
-    onPlayAgain({ matchTarget, timeLimit, musicSource, gameMode, blindMode, djPickCount, playlistName, playlistHint });
+    onPlayAgain({ matchTarget, timeLimit, musicSource, gameMode, blindMode, djPickCount, playlistName, playlistHint, djHostTarget, djPenaltyEnabled, djPenaltyAmount });
   };
 
   return (
@@ -82,7 +85,7 @@ export default function EndScreen({ room, playerId, isHost, onPlayAgain, onLeave
         {isDJBattle && (
           <div style={{ ...s.scoreRow, borderBottom: '1px solid rgba(168,85,247,0.3)' }}>
             <span style={{ ...s.scoreName, color: '#a855f7' }}>🎧 {room.players.find(p => p.id === room.hostId)?.name} (DJ)</span>
-            <span style={{ ...s.scoreVal, color: '#a855f7' }}>{room.hostScore || 0} pts</span>
+            <span style={{ ...s.scoreVal, color: '#a855f7' }}>{room.hostScore || 0} / {room.djHostTarget || 10} pts</span>
           </div>
         )}
         {sorted.map((p, i) => (
@@ -151,6 +154,37 @@ export default function EndScreen({ room, playerId, isHost, onPlayAgain, onLeave
                     min={1} max={15} value={djPickCount}
                     onChange={e => setDjPickCount(Math.max(1, Math.min(15, parseInt(e.target.value)||1)))}
                   />
+                  <label style={s.label}>DJ score target</label>
+                  <input type="number"
+                    style={{ ...s.numInput, width:'100%', boxSizing:'border-box', marginBottom:8 }}
+                    min={1} max={50} value={djHostTarget}
+                    onChange={e => setDjHostTarget(Math.max(1, parseInt(e.target.value)||1))}
+                  />
+                  <div
+                    style={s.checkRow}
+                    onClick={() => setDjPenaltyEnabled(!djPenaltyEnabled)}
+                  >
+                    <div>
+                      <div style={{ fontSize:13, color: djPenaltyEnabled ? '#a855f7' : '#e2e8f0', fontWeight:600 }}>⚡ DJ penalty mode</div>
+                      <div style={{ fontSize:11, color:'#64748b', marginTop:2 }}>DJ loses points when a player correctly guesses an artist.</div>
+                    </div>
+                    <div style={{ ...s.checkBox(djPenaltyEnabled), border: `2px solid ${djPenaltyEnabled ? '#a855f7' : '#475569'}`, background: djPenaltyEnabled ? '#a855f7' : 'transparent' }}>
+                      {djPenaltyEnabled && <span style={{ color:'#fff', fontSize:11, fontWeight:800 }}>✓</span>}
+                    </div>
+                  </div>
+                  {djPenaltyEnabled && (
+                    <>
+                      <label style={s.label}>Penalty amount</label>
+                      <input type="number"
+                        style={{ ...s.numInput, width:'100%', boxSizing:'border-box', marginBottom:8 }}
+                        min={0.1} max={5} step={0.1} value={djPenaltyAmount}
+                        onChange={e => {
+                          const v = parseFloat(e.target.value);
+                          if (!isNaN(v)) setDjPenaltyAmount(Math.round(Math.max(0.1, Math.min(5, v)) * 10) / 10);
+                        }}
+                      />
+                    </>
+                  )}
                 </>
               )}
 

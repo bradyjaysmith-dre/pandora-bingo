@@ -269,12 +269,16 @@ function DJBattleCard({ me, room, playerId, isHost }) {
             <div style={djS.hostScoreLabel}>🎧 Your score (DJ)</div>
             <div style={{ fontSize: 11, color: GC.muted, marginTop: 2 }}>Songs nobody guessed</div>
           </div>
-          <div style={djS.hostScoreVal}>{room.hostScore || 0}<span style={{ fontSize: 14, opacity: 0.6 }}> / {room.matchTarget}</span></div>
+          <div style={djS.hostScoreVal}>{room.hostScore || 0}<span style={{ fontSize: 14, opacity: 0.6 }}> / {room.djHostTarget || 10}</span></div>
+            </div>
+            {room.djPenaltyEnabled && (
+              <div style={{ fontSize: 11, color: '#a855f7', marginTop: 4, opacity: 0.8 }}>⚡ Penalty mode on — −{room.djPenaltyAmount} per player match</div>
+            )}
+          </div>
+          <PlayedList room={room} />
         </div>
-        <PlayedList room={room} />
-      </div>
-    );
-  }
+      );
+    }
 
   // Player view — show their picks and match status
   const matchedCount = (me.picks || []).filter(isMatched).length;
@@ -292,9 +296,11 @@ function DJBattleCard({ me, room, playerId, isHost }) {
       <div style={djS.hostScoreBox}>
         <div>
           <div style={djS.hostScoreLabel}>🎧 DJ score</div>
-          <div style={{ fontSize: 11, color: GC.muted, marginTop: 2 }}>Unguessed artists</div>
+          <div style={{ fontSize: 11, color: GC.muted, marginTop: 2 }}>
+            {room.djPenaltyEnabled ? `Unguessed · −${room.djPenaltyAmount} per match` : 'Unguessed artists'}
+          </div>
         </div>
-        <div style={djS.hostScoreVal}>{room.hostScore || 0}<span style={{ fontSize: 14, opacity: 0.6 }}> / {room.matchTarget}</span></div>
+        <div style={djS.hostScoreVal}>{room.hostScore || 0}<span style={{ fontSize: 14, opacity: 0.6 }}> / {room.djHostTarget || 10}</span></div>
       </div>
 
       <div style={{ fontSize: 11, fontWeight: 700, color: purple, textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 8 }}>
@@ -763,12 +769,16 @@ export default function GameScreen({ room, playerId, isHost, spotifyTokens, nowP
 
     socket.on('game:dj_events', ({ events, song }) => {
       const hostPoint = events.find(e => e.type === 'host_point');
+      const hostPenalty = events.find(e => e.type === 'host_penalty');
       const playerPoints = events.filter(e => e.type === 'player_point');
       if (hostPoint) {
         addToast(`🎧 DJ scores! Nobody guessed "${song}"`, '#a855f7');
       } else if (playerPoints.length > 0) {
         const names = playerPoints.map(e => e.playerName).join(', ');
         addToast(`🎯 ${names} score! "${song}" was in the playlist`, '#4ade80');
+        if (hostPenalty) {
+          addToast(`⚡ DJ penalty: −${hostPenalty.amount} pt`, '#f87171');
+        }
       }
     });
 
@@ -930,8 +940,13 @@ export default function GameScreen({ room, playerId, isHost, spotifyTokens, nowP
           <div style={s.timer}>{formatTime(secondsLeft)}</div>
         </div>
         <div style={{textAlign:'right'}}>
-          <div style={s.timerLabel}>{isGongShow || isDJBattle ? 'Points to win' : 'Win at'}</div>
-          <div style={{fontSize:18,fontWeight:700,color:GC.text,fontFamily:"'Orbitron', monospace"}}>{room.matchTarget} {isGongShow || isDJBattle ? 'pts' : 'matches'}</div>
+          <div style={s.timerLabel}>{isGongShow ? 'Points to win' : isDJBattle ? 'Targets' : 'Win at'}</div>
+          <div style={{fontSize:18,fontWeight:700,color:GC.text,fontFamily:"'Orbitron', monospace"}}>
+            {isDJBattle
+              ? <span style={{fontSize:13}}><span style={{color:'#a855f7'}}>{room.djHostTarget||10}</span> DJ · <span style={{color:'#6366f1'}}>{room.matchTarget}</span> plyr</span>
+              : `${room.matchTarget} ${isGongShow ? 'pts' : 'matches'}`
+            }
+          </div>
         </div>
       </div>
 
@@ -978,15 +993,17 @@ export default function GameScreen({ room, playerId, isHost, spotifyTokens, nowP
         <div style={s.scoreGrid}>
           {isDJBattle && (
             <div style={{
-              ...s.scoreCard(room.hostScore >= room.matchTarget),
-              border: room.hostScore >= room.matchTarget ? '1px solid rgba(168,85,247,0.5)' : '1px solid rgba(168,85,247,0.25)',
-              background: room.hostScore >= room.matchTarget ? 'rgba(168,85,247,0.15)' : 'rgba(168,85,247,0.06)',
+              ...s.scoreCard(room.hostScore >= (room.djHostTarget || 10)),
+              border: room.hostScore >= (room.djHostTarget || 10) ? '1px solid rgba(168,85,247,0.5)' : '1px solid rgba(168,85,247,0.25)',
+              background: room.hostScore >= (room.djHostTarget || 10) ? 'rgba(168,85,247,0.15)' : 'rgba(168,85,247,0.06)',
             }}>
               <div style={{ fontSize:12, color:'#a855f7', marginBottom:4 }}>🎧 DJ (Host)</div>
-              <div style={{ fontSize:22, fontWeight:700, color: room.hostScore >= room.matchTarget ? '#a855f7' : GC.text, fontFamily:"'Orbitron', monospace" }}>
-                {room.hostScore || 0}<span style={{fontSize:14,opacity:0.6}}> / {room.matchTarget}</span>
+              <div style={{ fontSize:22, fontWeight:700, color: room.hostScore >= (room.djHostTarget || 10) ? '#a855f7' : GC.text, fontFamily:"'Orbitron', monospace" }}>
+                {room.hostScore || 0}<span style={{fontSize:14,opacity:0.6}}> / {room.djHostTarget || 10}</span>
               </div>
-              <div style={{fontSize:11,color:GC.muted,marginTop:4}}>Unguessed artists</div>
+              <div style={{fontSize:11,color:GC.muted,marginTop:4}}>
+                Unguessed artists{room.djPenaltyEnabled ? ` · −${room.djPenaltyAmount} per match` : ''}
+              </div>
             </div>
           )}
           {sorted.filter(p => isDJBattle ? p.id !== room.hostId : true).map(p => {

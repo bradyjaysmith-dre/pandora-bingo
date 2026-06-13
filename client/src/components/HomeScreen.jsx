@@ -54,6 +54,9 @@ export default function HomeScreen({ spotifyConnected, onLeaderboard }) {
   const [djPickCount, setDjPickCount] = useState(5);
   const [playlistName, setPlaylistName] = useState('');
   const [playlistHint, setPlaylistHint] = useState('');
+  const [djHostTarget, setDjHostTarget] = useState(10);
+  const [djPenaltyEnabled, setDjPenaltyEnabled] = useState(false);
+  const [djPenaltyAmount, setDjPenaltyAmount] = useState(1.0);
   const [spotifyAvailable, setSpotifyAvailable] = useState(false);
 
   // Fetch server config to determine which music sources to show
@@ -81,6 +84,9 @@ export default function HomeScreen({ spotifyConnected, onLeaderboard }) {
         if (s.djPickCount) setDjPickCount(s.djPickCount);
         if (s.playlistName) setPlaylistName(s.playlistName);
         if (s.playlistHint) setPlaylistHint(s.playlistHint);
+        if (s.djHostTarget) setDjHostTarget(s.djHostTarget);
+        if (s.djPenaltyEnabled !== undefined) setDjPenaltyEnabled(s.djPenaltyEnabled);
+        if (s.djPenaltyAmount != null) setDjPenaltyAmount(s.djPenaltyAmount);
         setMode('host');
       } catch {}
       sessionStorage.removeItem('pandora_pre_spotify');
@@ -209,8 +215,7 @@ export default function HomeScreen({ spotifyConnected, onLeaderboard }) {
   const connectSpotify = () => {
     sessionStorage.setItem('pandora_pre_spotify', JSON.stringify({
       name, matchTarget, timeLimit, musicSource, gameMode, blindMode,
-      djPickCount, playlistName, playlistHint,
-      // genre and pickMode retired
+      djPickCount, playlistName, playlistHint, djHostTarget, djPenaltyEnabled, djPenaltyAmount,
     }));
     window.location.href = '/auth/spotify';
   };
@@ -224,7 +229,7 @@ export default function HomeScreen({ spotifyConnected, onLeaderboard }) {
       hostName: name.trim(), matchTarget, timeLimit,
       musicSource: resolvedSource, gameMode, blindMode,
       djPickCount, playlistName: playlistName.trim(), playlistHint: playlistHint.trim(),
-      // pickMode always 'artists' — set server-side; genre retired
+      djHostTarget, djPenaltyEnabled, djPenaltyAmount,
     });
   };
 
@@ -327,7 +332,7 @@ export default function HomeScreen({ spotifyConnected, onLeaderboard }) {
           <div style={s.gameModeSub}>Pick 10 songs + 5 secret gong songs. Gong another player's pick to cancel their point — but duplicate gongers cancel each other and lose a point.</div>
         </div>
 
-        <div style={s.gameModeCard(gameMode === 'djbattle', '#a855f7')} onClick={() => { setGameMode('djbattle'); setPickMode('artists'); setTimeLimit(40); }}>
+        <div style={s.gameModeCard(gameMode === 'djbattle', '#a855f7')} onClick={() => { setGameMode('djbattle'); }}>
           <div style={s.gameModeTitle(gameMode === 'djbattle', '#a855f7')}>
             DJ Battle
             <span style={s.badge('rgba(168,85,247,0.15)', '#a855f7', 'rgba(168,85,247,0.4)')}>NEW</span>
@@ -360,7 +365,47 @@ export default function HomeScreen({ spotifyConnected, onLeaderboard }) {
               value={djPickCount}
               onChange={e => setDjPickCount(Math.max(1, Math.min(15, parseInt(e.target.value) || 1)))}
             />
-            <div style={{ fontSize: 11, color: C.muted, marginTop: 4 }}>How many artists each player picks (1–15). Default: 5.</div>
+            <div style={{ fontSize: 11, color: C.muted, marginTop: 4, marginBottom: 10 }}>How many artists each player picks (1–15). Default: 5.</div>
+
+            <label style={{ ...s.label, color: '#a855f7' }}>DJ score target <span style={{ color: C.muted, fontWeight: 400, textTransform: 'none' }}>(separate from player target)</span></label>
+            <input
+              type="number"
+              style={{ ...s.numInput, width: '100%', boxSizing: 'border-box', marginBottom: 0, border: '1px solid rgba(168,85,247,0.4)' }}
+              min={1} max={50}
+              value={djHostTarget}
+              onChange={e => setDjHostTarget(Math.max(1, parseInt(e.target.value) || 1))}
+            />
+            <div style={{ fontSize: 11, color: C.muted, marginTop: 4, marginBottom: 10 }}>DJ wins when reaching this score. Players race to "Points to win" (below). Default: 10.</div>
+
+            <div
+              style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', borderRadius: 8, background: 'rgba(168,85,247,0.06)', border: `1px solid ${djPenaltyEnabled ? 'rgba(168,85,247,0.5)' : 'rgba(168,85,247,0.2)'}`, marginBottom: 6, cursor: 'pointer' }}
+              onClick={() => setDjPenaltyEnabled(!djPenaltyEnabled)}
+            >
+              <div>
+                <div style={{ fontSize: 13, color: djPenaltyEnabled ? '#a855f7' : C.text, fontWeight: 700 }}>⚡ DJ penalty mode</div>
+                <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>DJ loses points when a player correctly guesses an artist.</div>
+              </div>
+              <div style={{ width: 20, height: 20, borderRadius: 4, border: `2px solid ${djPenaltyEnabled ? '#a855f7' : C.border}`, background: djPenaltyEnabled ? '#a855f7' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                {djPenaltyEnabled && <span style={{ color: '#fff', fontSize: 13, fontWeight: 800 }}>✓</span>}
+              </div>
+            </div>
+
+            {djPenaltyEnabled && (
+              <>
+                <label style={{ ...s.label, color: '#a855f7' }}>Penalty amount <span style={{ color: C.muted, fontWeight: 400, textTransform: 'none' }}>(points lost per matched song)</span></label>
+                <input
+                  type="number"
+                  style={{ ...s.numInput, width: '100%', boxSizing: 'border-box', marginBottom: 0, border: '1px solid rgba(168,85,247,0.4)' }}
+                  min={0.1} max={5} step={0.1}
+                  value={djPenaltyAmount}
+                  onChange={e => {
+                    const v = parseFloat(e.target.value);
+                    if (!isNaN(v)) setDjPenaltyAmount(Math.round(Math.max(0.1, Math.min(5, v)) * 10) / 10);
+                  }}
+                />
+                <div style={{ fontSize: 11, color: C.muted, marginTop: 4 }}>Default: 1.0. One decimal place (e.g. 0.5, 1.0, 2.0).</div>
+              </>
+            )}
           </div>
         )}
 

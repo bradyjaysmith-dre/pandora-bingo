@@ -234,9 +234,9 @@ io.on('connection', (socket) => {
   });
 
   // ── Create room ──────────────────────────────────────────────────────────
-  socket.on('host:create', ({ hostName, matchTarget, timeLimit, musicSource, gameMode, blindMode, djPickCount, playlistName, playlistHint }) => {
+  socket.on('host:create', ({ hostName, matchTarget, timeLimit, musicSource, gameMode, blindMode, djPickCount, playlistName, playlistHint, djHostTarget, djPenaltyEnabled, djPenaltyAmount }) => {
     const hostId = uuidv4();
-    const room = game.createRoom({ hostId, hostName, matchTarget, timeLimit, musicSource, gameMode, blindMode, djPickCount, playlistName, playlistHint });
+    const room = game.createRoom({ hostId, hostName, matchTarget, timeLimit, musicSource, gameMode, blindMode, djPickCount, playlistName, playlistHint, djHostTarget, djPenaltyEnabled, djPenaltyAmount });
     socket.join(room.code);
     socket.data.roomCode = room.code;
     socket.data.playerId = hostId;
@@ -265,10 +265,10 @@ io.on('connection', (socket) => {
   });
 
   // ── Reset room for new game ──────────────────────────────────────────────
-  socket.on('host:reset', ({ matchTarget, timeLimit, musicSource, gameMode, blindMode, djPickCount, playlistName, playlistHint }) => {
+  socket.on('host:reset', ({ matchTarget, timeLimit, musicSource, gameMode, blindMode, djPickCount, playlistName, playlistHint, djHostTarget, djPenaltyEnabled, djPenaltyAmount }) => {
     const { roomCode } = socket.data;
     stopSpotifyPolling(roomCode);
-    const result = game.resetRoom(roomCode, { matchTarget, timeLimit, musicSource, gameMode, blindMode, djPickCount, playlistName, playlistHint });
+    const result = game.resetRoom(roomCode, { matchTarget, timeLimit, musicSource, gameMode, blindMode, djPickCount, playlistName, playlistHint, djHostTarget, djPenaltyEnabled, djPenaltyAmount });
     if (result.error) { socket.emit('error', { message: result.error }); return; }
     io.to(roomCode).emit('room:reset', { room: result.room });
     console.log('Room reset:', roomCode, 'playlist:', playlistName);
