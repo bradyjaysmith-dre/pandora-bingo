@@ -270,15 +270,14 @@ function DJBattleCard({ me, room, playerId, isHost }) {
             <div style={{ fontSize: 11, color: GC.muted, marginTop: 2 }}>Songs nobody guessed</div>
           </div>
           <div style={djS.hostScoreVal}>{room.hostScore || 0}<span style={{ fontSize: 14, opacity: 0.6 }}> / {room.djHostTarget || 10}</span></div>
-            </div>
-            {room.djPenaltyEnabled && (
-              <div style={{ fontSize: 11, color: '#a855f7', marginTop: 4, opacity: 0.8 }}>⚡ Penalty mode on — −{room.djPenaltyAmount} per player match</div>
-            )}
-          </div>
-          <PlayedList room={room} />
         </div>
-      );
-    }
+        {room.djPenaltyEnabled && (
+          <div style={{ fontSize: 11, color: '#a855f7', marginTop: 4, marginBottom: 8, opacity: 0.8 }}>⚡ Penalty mode on — −{room.djPenaltyAmount} per player match</div>
+        )}
+        <PlayedList room={room} />
+      </div>
+    );
+  }
 
   // Player view — show their picks and match status
   const matchedCount = (me.picks || []).filter(isMatched).length;
