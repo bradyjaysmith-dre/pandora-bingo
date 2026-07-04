@@ -1,5 +1,6 @@
 # Pandora Bingo
 
+> **v12.1.0** — PWA support: installable on iOS/Android home screen, standalone display (no browser chrome); hand-rolled manifest + service worker (not vite-plugin-pwa — hit a workbox-build build bug on Railway); Wake Lock keeps host screen on during mic detection; background-reminder notification alerts host when mic detection pauses on tab backgrounding. ⚠️ Needs on-device testing before considered done — see PWA section below.
 > **v12.0.0** — Song mode retired (artist-only); genre picker replaced by playlist name field; AI/iTunes pool → static shuffled Top 200 pool; DJ Battle separate host target + penalty mode; Spotify whitelist detection with auto-fallback to mic; default source mic; SQLite stats DB on Railway volume; 60-min default time. ✅
 > **v11.0.0** — DJ Battle game mode: host vs. players, playlist declaration, artist picks, host scores unguessed artists, 40-min default. ✅
 > **v10.6.0** — AudD fully operational: 15s interval, 60s post-match cooldown, per-game + cumulative stats panel, Spotify polling leak fixed, Railway build fix. ✅
@@ -224,7 +225,36 @@ The host selects a source when creating a room. **Mic detection is the default.*
 
 ---
 
-### Pick Modes
+### Progressive Web App
+
+Pandora Bingo is installable to the home screen on iOS and Android, launching full-screen with no browser chrome (`display: standalone`).
+
+**Manifest & service worker are hand-rolled, not plugin-generated.** `vite-plugin-pwa` was tried first but hit a `workbox-build` dynamic-require bug specific to Railway's Nixpacks build container (built fine locally, failed on deploy). Replaced with:
+- `client/public/manifest.webmanifest` — static file, copied to `dist/` root by Vite automatically, no plugin needed
+- `client/public/sw.js` — minimal hand-written service worker: pass-through `fetch` handler (satisfies installability criteria without caching anything — this is live multiplayer state, not offline content), `notificationclick` handler to focus the app
+- Registered manually in `client/src/main.jsx`
+
+**Icons** are a placeholder set (`client/public/icons/`) in the app's existing navy/cyan/gold theme — swap for real branding anytime, same filenames/sizes (192, 512, maskable variants, apple-touch-icon).
+
+**Installing:**
+- **Android (Chrome)** — look for an install icon in the address bar, or ⋮ menu → "Install app". No automatic banner is guaranteed; depends on Chrome's engagement heuristics.
+- **iOS (Safari)** — no automatic prompt exists on iOS at all. Manual only: Share icon → Add to Home Screen.
+
+**Host mic-detection reminder** — while AudD mic detection is running, backgrounding the tab pauses detection (the OS suspends `getUserMedia` the moment the page loses foreground). The host can tap "🔔 Enable" in the Host (Mic) tab to get a system notification the instant they switch apps, reminding them to come back. This only covers the moment of backgrounding, not a recurring nag while genuinely away — a repeating reminder would need server-triggered Web Push (VAPID keys + subscription storage), which is a separate, heavier piece of work, not yet built.
+
+**Wake Lock** — the host's screen is kept awake (`useWakeLock` hook) while mic detection is actively listening, reducing accidental backgrounding from screen auto-lock. Re-acquires automatically if the OS releases it (which happens whenever the tab goes hidden, wake lock or not).
+
+**Known limitation — no true background mic capture.** A PWA cannot keep `getUserMedia` alive when backgrounded, on either iOS or Android — this is an OS-level restriction, not something fixable in this codebase. True background mic capture would require a native wrapper (Capacitor), with a foreground service on Android (straightforward) and a background `audio` mode entitlement on iOS (works, but draws App Store review scrutiny and shows a persistent recording indicator). Not planned unless App Store presence becomes a goal.
+
+**⚠️ Testing checklist for this release (not yet verified on-device):**
+- [ ] Android Chrome: install prompt or menu option appears; installed app launches standalone (no address bar)
+- [ ] iOS Safari: Add to Home Screen works manually; launches standalone
+- [ ] DevTools → Application → Manifest shows no errors, all icons load
+- [ ] Host (Mic) tab: tap "Enable" reminders, background the tab during an active AudD room, confirm notification fires
+- [ ] Tapping the reminder notification returns focus to the app
+- [ ] Screen stays awake on the host device while mic detection is listening
+
+---
 
 ### Pick Modes
 
@@ -369,6 +399,8 @@ Host setup state saved to sessionStorage before OAuth redirect and restored on r
 
 **Vite in dependencies** — `vite` and `@vitejs/plugin-react` are in `dependencies` (not `devDependencies`) in `client/package.json`. Railway/Nixpacks sets `NODE_ENV=production` during build, which causes npm to skip devDependencies — moving them to dependencies ensures the build succeeds.
 
+**Hand-rolled PWA manifest + service worker, not vite-plugin-pwa** — `vite-plugin-pwa` was tried first but its `generateSW` step hit `Error: Dynamic require of "workbox-build" is not supported` specifically in Railway's Nixpacks build container (built cleanly in local dev). Rather than chase a plugin/environment compatibility bug, the manifest and service worker are static hand-written files (`client/public/manifest.webmanifest`, `client/public/sw.js`), copied to `dist/` by Vite's normal `public/` handling with zero build-time dependency on workbox-build. This also fits the app better — a live multiplayer game has no real offline content worth precaching, so Workbox's generated caching strategies weren't buying much anyway.
+
 ---
 
 ## Project Structure
@@ -399,10 +431,17 @@ pandora-bingo/
     .env               Local credentials (not committed)
   client/
     src/
+      main.jsx               React entry; registers client/public/sw.js on load
       App.jsx               Screen routing, History API back button, socket reconnect,
                             in-game leave modal
       socket.js             Socket.io client with aggressive reconnection settings
       index.css             Base styles
+      hooks/
+        useWakeLock.js        Keeps host screen awake while mic detection is listening;
+                              re-acquires on visibility return (OS auto-releases on hide)
+        useAuddBackgroundReminder.js
+                              Notification permission handling + visibility-triggered
+                              "return to the app" reminder during AudD mic detection
       components/
         HomeScreen.jsx        Name entry, host setup; playlist name field (all modes);
                               mic detection as default source; Spotify whitelist error
@@ -416,14 +455,24 @@ pandora-bingo/
         GameScreen.jsx        Timer, card, scoreboard, host controls, event toasts;
                               DJ Battle card with separate host/player targets, penalty
                               display, penalty toast; Spotify Jam host panel + player
-                              banner; AudD mic capture loop; debug log; stats panel
+                              banner; AudD mic capture loop; debug log; stats panel;
+                              Wake Lock + background reminder wired in here
         EndScreen.jsx         Winner, final scores (DJ host row with djHostTarget);
                               play again settings with all DJ Battle options; retired
                               genre picker + pick mode toggle commented out
         SpotifyCallback.jsx   OAuth callback; whitelist error detection; auto-fallback
                               to mic; session flag + redirect to home with error message
+    public/
+      manifest.webmanifest   PWA manifest — static file, hand-written (no build plugin)
+      sw.js                  Minimal hand-written service worker — pass-through fetch
+                              handler, notificationclick focus handler
+      icons/                 PWA icon set: 192/512 + maskable variants, apple-touch-icon
+                              (placeholder art in the app's navy/cyan/gold theme)
+    index.html              iOS standalone meta tags, manifest link, apple-touch-icon
     package.json            vite + @vitejs/plugin-react in dependencies (not devDependencies)
                             so Railway build succeeds with NODE_ENV=production
+    vite.config.js          Plain @vitejs/plugin-react — no PWA build plugin (see Design
+                            Decisions: hand-rolled manifest/SW avoids a workbox-build bug)
     dist/                   Built frontend (generated by npm run build; not committed)
   railway.json              Railway build and start commands
   package.json              Root scripts: install:all, build, start, dev
@@ -459,9 +508,11 @@ pandora-bingo/
 - v10.6 — AudD fully operational: 15s polling interval; 60s post-match cooldown; per-game + cumulative stats panel; Spotify polling leak fixed (source-gated); Android BT speaker fix (ambient constraints); circular ref crash fixes; Railway build fix (vite moved to dependencies)
 - v11.0 — DJ Battle game mode: host declares playlist, players pick artists, host scores unguessed artists, independent player scoring, configurable pick count (1–15), 40-min default time, host auto-confirmed at pick phase start, `game:dj_events` socket event, purple scoreboard host row
 - v12.0 — Song mode retired (artist-only); genre picker replaced by playlist name field (all modes); Last.fm/AI pool retired → static ~200-artist shuffled pool; Spotify Jam link sharing in host tab; DJ Battle separate host target (`djHostTarget`) + penalty mode (`djPenaltyEnabled`, `djPenaltyAmount`); Spotify whitelist error detection with auto-fallback to mic; mic detection as default source; SQLite stats DB on Railway persistent volume; 60-min default time limit; EndScreen DJ host score fix; `stats-db.js` with artists/songs/game_sessions schema
+- v12.1 — PWA support: installable to home screen, standalone display on iOS/Android; hand-rolled `manifest.webmanifest` + `sw.js` (dropped `vite-plugin-pwa` after a `workbox-build` bug broke the Railway build); `useWakeLock` keeps host screen on during mic detection; `useAuddBackgroundReminder` notifies the host when they background the tab mid-detection; placeholder icon set added
 
 ### Upcoming
 
+- **⚠️ Test the v12.1 PWA release on real devices** — not yet verified: Android install flow, iOS Add to Home Screen, standalone launch, background reminder notification, Wake Lock behavior (see checklist in the Progressive Web App section above)
 - Build StatsScreen UI — sortable artist/song stats table accessible from host tab
 - Hook stat recording into game events (pick submission, song played, artist matched)
 - Manual fallback grid should show only artists players actually picked, not full pool
@@ -472,3 +523,5 @@ pandora-bingo/
 - Password auth for leaderboard (replace name-based identity)
 - Mobile UI refinements
 - Spotify playback control (play/pause/skip from within the game)
+- Recurring background reminder via Web Push (VAPID keys + subscription storage) if the single on-background notification isn't enough in practice
+- Scope Capacitor native wrapper if true background mic capture or App Store presence becomes a goal
