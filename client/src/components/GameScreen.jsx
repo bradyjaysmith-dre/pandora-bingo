@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import socket from '../socket.js';
 import { playHit, playGong, playBackfire, playWildcard, playPenalty, playWin } from '../sounds.js';
+import { useWakeLock } from '../hooks/useWakeLock.js';
+import { useNotificationPermission, useAuddBackgroundReminder } from '../hooks/useAuddBackgroundReminder.js';
 
 function formatTime(seconds) {
   if (!seconds && seconds !== 0) return '--:--';
@@ -731,6 +733,20 @@ export default function GameScreen({ room, playerId, isHost, spotifyTokens, nowP
     return () => { stopAuddListening(); };
   }, [stopAuddListening]);
 
+  // Keep the host's screen awake while mic detection is running, so the
+  // device isn't the reason it gets backgrounded.
+  useWakeLock(isHost && isAuddMode && (auddStatus === 'listening' || auddStatus === 'identifying'));
+
+  // Notification permission for the "return to the app" reminder.
+  const { permission: notifPermission, requestPermission: requestNotifPermission } = useNotificationPermission();
+
+  // Remind the host the moment they background the tab while mic detection
+  // is active — detection itself pauses as soon as the OS suspends the page.
+  useAuddBackgroundReminder({
+    enabled: isHost && isAuddMode,
+    isActiveRef: auddActiveRef,
+  });
+
   const addToast = (message, color = '#fbbf24') => {
     const id = Date.now() + Math.random();
     setToasts(prev => [...prev, { id, message, color }]);
@@ -1152,6 +1168,30 @@ export default function GameScreen({ room, playerId, isHost, spotifyTokens, nowP
                   </button>
                 )}
               </div>
+
+              {/* ── Return reminder toggle ── */}
+              {notifPermission !== 'unsupported' && (
+                <div style={{
+                  display:'flex', alignItems:'center', gap:10, marginBottom:12,
+                  padding:'8px 12px', borderRadius:8,
+                  background:'rgba(255,179,71,0.08)', border:`1px solid rgba(255,179,71,0.25)`,
+                }}>
+                  <span style={{fontSize:16}}>🔔</span>
+                  <div style={{flex:1, fontSize:11, color:GC.muted}}>
+                    {notifPermission === 'granted'
+                      ? "You'll get a notification if you leave the app while listening."
+                      : 'Get notified if you switch apps while mic detection is running.'}
+                  </div>
+                  {notifPermission !== 'granted' && (
+                    <button
+                      onClick={requestNotifPermission}
+                      style={{padding:'6px 10px',borderRadius:6,border:`1px solid ${GC.amber}`,background:'rgba(255,179,71,0.12)',color:GC.amber,cursor:'pointer',fontSize:11,fontWeight:700,whiteSpace:'nowrap'}}
+                    >
+                      Enable
+                    </button>
+                  )}
+                </div>
+              )}
 
               {/* ── Debug log ── */}
               <div style={{marginBottom:10}}>
