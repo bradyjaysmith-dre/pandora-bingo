@@ -1050,6 +1050,17 @@ export default function GameScreen({ room, playerId, isHost, spotifyTokens, nowP
         }));
         const sortedPicks = [...pickCounts.values()].sort((a, b) => b.count - a.count);
         const confirmedCount = room.players.filter(p => p.confirmed).length;
+        const promptText = sortedPicks.length > 0
+          ? `Create a playlist featuring: ${sortedPicks.map(p => p.name).join(', ')}, plus similar-sounding artists`
+          : '';
+        const copyPrompt = async () => {
+          try {
+            await navigator.clipboard.writeText(promptText);
+            addToast('Prompt copied to clipboard!', '#4ade80');
+          } catch {
+            addToast('Copy failed — select and copy the text manually.', '#f87171');
+          }
+        };
         return (
           <div>
             <div style={{ fontSize:13, color:GC.muted, marginBottom:12 }}>
@@ -1058,11 +1069,31 @@ export default function GameScreen({ room, playerId, isHost, spotifyTokens, nowP
             {sortedPicks.length === 0 ? (
               <div style={{ fontSize:13, color:GC.muted }}>No picks submitted.</div>
             ) : (
-              <div style={s.playedList}>
-                {sortedPicks.map(({ name, count }) => (
-                  <span key={name} style={s.playedChip}>{name} · {count} player{count === 1 ? '' : 's'}</span>
-                ))}
-              </div>
+              <>
+                <div style={s.playedList}>
+                  {sortedPicks.map(({ name, count }) => (
+                    <span key={name} style={s.playedChip}>{name} · {count} player{count === 1 ? '' : 's'}</span>
+                  ))}
+                </div>
+
+                <div style={{ fontSize:11, color:GC.muted, textTransform:'uppercase', letterSpacing:'0.06em', marginTop:20, marginBottom:8 }}>
+                  Suggested playlist prompt
+                </div>
+                <div style={{ fontSize:11, color:GC.muted, marginBottom:8 }}>
+                  Paste this into Spotify's or Apple Music's AI playlist tool to build a playlist shaped by what players predicted.
+                </div>
+                <textarea
+                  readOnly
+                  value={promptText}
+                  onFocus={e => e.target.select()}
+                  style={{
+                    width:'100%', minHeight:80, padding:'10px 12px', borderRadius:8,
+                    background:GC.alt, border:`1px solid ${GC.border}`, color:GC.text,
+                    fontSize:13, lineHeight:1.5, resize:'vertical', marginBottom:10,
+                  }}
+                />
+                <button style={s.btnAdd} onClick={copyPrompt}>📋 Copy prompt</button>
+              </>
             )}
           </div>
         );

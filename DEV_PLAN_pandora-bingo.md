@@ -73,7 +73,7 @@ First real-world outdoor multiplayer test. Spotify connection failed; mic detect
 
 ---
 
-### Session 4 — New: player-influenced playlist mode (MVP) 🔲
+### Session 4 — New: player-influenced playlist mode (MVP) ✅ (code complete, verified via string check + build; on-device confirmation pending)
 See feature spec below. Manual/copy-paste only for v1 — no new external API integration.
 
 **Tasks:**
@@ -132,7 +132,7 @@ See feature spec below. Manual/copy-paste only for v1 — no new external API in
 
 1. **Beta scope** — confirmed as widening the current PWA to more testers (not the App Store rewrite)? Assumed yes for this plan.
 2. **Leave-mid-game handling** — for a non-host player, does leaving just free their slot and let the game continue as-is, or does it need special handling for role-based modes (DJ Battle's host, Newlywed Bingo's paired secret guesses)?
-3. **Player-influenced playlist scope** — new distinct game mode, or a toggle any existing mode can enable?
+3. ~~**Player-influenced playlist scope**~~ — **Resolved 2026-09-21:** neither. Dre chose to extend Session 3's existing host-only "Picks" tab (available in every game mode already) with a prompt generator, rather than add a new mode or toggle.
 4. **Sequencing** — strictly bug fixes (Sessions 1–2) before feature work (Sessions 3–4), or interleaved?
 
 ---
@@ -246,4 +246,22 @@ Dre tested Session 2 against the live Railway deploy (iOS Safari hosting, Androi
 
 **Explicitly out of scope (per the plan):** Session 4's playlist-prompt string generator — this session only built the aggregation and display that Session 4 will read from.
 
-**Resuming after a break:** uncommitted in the working tree as of this entry. Session 4 (player-influenced playlist mode MVP) is next once Session 3 is committed/pushed and — per Dre's standing instruction — accepted regardless of on-device testing status, with testing gaps flagged rather than blocking.
+**Resuming after a break:** committed as `348a93c`, pushed, deployed to Railway (confirmed SUCCESS).
+
+### 2026-09-21 — Session 4: player-influenced playlist mode (MVP)
+
+**Open Decision #3 resolved before starting:** Dre chose "neither" — extend Session 3's existing host-only "Picks" tab (already present in every game mode) rather than add a new selectable mode or a toggle. This kept the feature to a single, small extension of existing UI.
+
+**Shipped:**
+- `client/src/components/GameScreen.jsx`'s "Picks" summary tab now generates a suggested playlist prompt from the same ranked pick aggregation built in Session 3: *"Create a playlist featuring: [artists in picked-count order], plus similar-sounding artists"* — shown in a read-only textarea (tap-to-select-all on focus) with a "📋 Copy prompt" button using `navigator.clipboard.writeText`.
+- Copy success/failure feedback reuses the existing `addToast` mechanism already in this file (no new UI primitive) — green toast on success, red toast with a manual-copy fallback hint if clipboard access fails.
+- No server changes, no new external API calls, per the plan's explicit MVP constraint — pure client-side string generation from data already in `room` state.
+- `npm run build` verified green.
+
+**Verified:**
+- Re-ran the exact prompt-string template against Session 3's known-good aggregation test output (Alpha:2, Bravo:2, plus 6 singles) — produced the correct comma-joined string in picked-count order.
+- Confirmed "Suggested playlist prompt," "Copy prompt," and the generated template text are present in the production build output.
+
+**Not yet done — needs Dre's on-device pass:** the Copy button's clipboard behavior specifically is worth a real-device check (clipboard permissions can behave differently across mobile Safari/Chrome than in a desktop dev environment) — not verified beyond the build-output string check above.
+
+**Next:** Session 5 (Setup flow & onboarding) is next per the plan.
