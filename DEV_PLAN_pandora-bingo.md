@@ -48,7 +48,7 @@ First real-world outdoor multiplayer test. Spotify connection failed; mic detect
 
 ---
 
-### Session 2 — Room lifecycle & reconnection hardening 🔲
+### Session 2 — Room lifecycle & reconnection hardening 🔶 (code complete, on-device retest pending)
 **Tasks:**
 - Add an explicit "Leave Room" control for non-host players — frees their slot server-side (`server/game.js`, new `player:leave` socket event), doesn't affect other players
 - Add/confirm an "End Game" confirmation for the host — extend the existing back-button interception logic in `App.jsx` rather than duplicating it
@@ -187,3 +187,27 @@ _Claude Code: append a dated entry here after each session — what shipped, wha
 - iOS Safari has not been tested at all this session (only Android Chrome, real hardware) — the original acceptance criteria calls for both. Worth a pass before calling Session 1 fully closed across platforms.
 - Installed-PWA-standalone mode not retested with these latest changes (only normal browser-tab mode).
 - Session 1 is otherwise functionally complete and closed pending the iOS/PWA passes above. Session 2 (Room lifecycle & reconnection hardening) is next and unblocked.
+
+### 2026-09-21 — Session 2: Room lifecycle & reconnection hardening
+
+**Shipped:**
+- **Explicit Leave control:** a small "✕ Leave" button now renders on every in-room screen (lobby, pick, waiting, game — not just reachable via phone-back-button while in-game as before). It opens the existing `LeaveModal` (`client/src/App.jsx`) — reused, not duplicated.
+- **Leaving now actually frees the slot server-side.** Previously `confirmLeave()` only cleared local state; the player stayed in `room.players` forever, and if they left mid-picking, `checkAllConfirmedAndStart` could never fire because it waits on every player to confirm. Added `game.removePlayer(code, playerId)` (`server/game.js`) and a `player:leave` socket handler (`server/index.js`) that removes the player, re-broadcasts room state, and re-checks whether the remaining players can now start. Verified with a scripted socket test: player leaves unconfirmed mid-picking → removed from the room → host confirming alone now correctly auto-starts the game instead of hanging.
+- **Host leaving now tears the room down properly.** The host path in `confirmLeave()` now emits the existing `host:end_game` event before going home, instead of just clearing local state and leaving the room's timer/polling intervals running server-side with nobody connected.
+- **Stale-room rejoin no longer loops silently.** `player:rejoin` failures now emit a distinct `room:rejoin_failed` event (was: generic `error` toast that auto-dismissed after 4s while the dead session stayed in localStorage, so Socket.io's infinite reconnection kept retrying it forever). Client now clears the session, resets to the home screen, and shows a clear one-shot message. Verified with a scripted test against a room code that doesn't exist on the server.
+- **Crash logging.** Every `socket.on(...)` handler in `server/index.js` is now wrapped by a `wrapHandler` helper that catches sync throws and rejected promises, logs `[socket:<event>] room=<code>` to stderr, and emits a graceful error to the client instead of letting the exception propagate. An uncaught exception in a handler previously crashed the entire Node process — taking every active room down at once, which plausibly explains the unexplained fire-pit host crash. Added `process.on('uncaughtException'/'unhandledRejection')` as a last-resort net. Verified: sent a malformed `host:create` payload designed to throw — server emitted a graceful error and stayed up and responsive afterward (confirmed via a follow-up HTTP request).
+- `npm run build` (client) verified green.
+
+**Verified locally (scripted socket.io-client tests against the dev server, not on-device):**
+- Player leaving mid-picking frees their slot and unblocks game start for the rest of the table.
+- Rejoin against a nonexistent room code emits `room:rejoin_failed`, not a generic error.
+- A thrown exception inside a socket handler no longer kills the server process.
+
+**Not yet done — needs Dre's on-device pass:**
+- Real backgrounding/reconnect retest (the original "existing rejoin logic didn't hold up in the field" report) — this needs a real phone backgrounding a real tab, not a scripted client.
+- Visual check of the new "✕ Leave" button placement against the safe-area/notch on a real device (added `top: calc(12px + env(safe-area-inset-top))` defensively, same pattern as Session 1's bottom-inset fixes, but unverified on hardware).
+- Host-leave-mid-DJ-Battle and Newlywed-partner-leaves scenarios were *not* given special-case handling (per DEV_PLAN Open Decision #2 — explicitly deferred, not a gap). Worth a deliberate playtest if those modes see real use before beta.
+
+**Out of scope, by design:** role-based unwind logic for Newlywed/DJ Battle when a player leaves mid-game (Open Decision #2 said not to block Session 2 on this).
+
+**Resuming after a break:** nothing from this session is committed yet — changes are uncommitted in the working tree. Still need Dre's go-ahead on the diff before `git add . && git commit`. Session 3 (Playlist mental model / Selection Summary) is next once Session 2's on-device pass is done.

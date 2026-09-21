@@ -217,13 +217,35 @@ app.get('*', (req, res) => {
 
 // ── Socket.io ────────────────────────────────────────────────────────────────
 
+// Wraps a socket event handler so a thrown/rejected error is logged with
+// room context and reported to the client instead of crashing the whole
+// process (an uncaught exception inside a socket.io handler previously took
+// every active room down at once — this was the likely cause of the
+// unexplained host-side crash from the fire-pit playtest).
+function wrapHandler(io, socket, eventName, handler) {
+  socket.on(eventName, (...args) => {
+    try {
+      const result = handler(...args);
+      if (result && typeof result.catch === 'function') {
+        result.catch((err) => {
+          console.error(`[socket:${eventName}] room=${socket.data && socket.data.roomCode || 'n/a'}`, err);
+          socket.emit('error', { message: 'Something went wrong. Please try again.' });
+        });
+      }
+    } catch (err) {
+      console.error(`[socket:${eventName}] room=${socket.data && socket.data.roomCode || 'n/a'}`, err);
+      socket.emit('error', { message: 'Something went wrong. Please try again.' });
+    }
+  });
+}
+
 io.on('connection', (socket) => {
   console.log('Client connected:', socket.id);
 
   // ── Rejoin existing session ──────────────────────────────────────────────
-  socket.on('player:rejoin', ({ roomCode, playerId }) => {
+  wrapHandler(io, socket, 'player:rejoin', ({ roomCode, playerId }) => {
     const result = game.rejoinRoom(roomCode, playerId);
-    if (result.error) { socket.emit('error', { message: result.error }); return; }
+    if (result.error) { socket.emit('room:rejoin_failed', { message: result.error }); return; }
     socket.join(roomCode);
     socket.data.roomCode = roomCode;
     socket.data.playerId = playerId;
@@ -234,7 +256,7 @@ io.on('connection', (socket) => {
   });
 
   // ── Create room ──────────────────────────────────────────────────────────
-  socket.on('host:create', ({ hostName, matchTarget, timeLimit, musicSource, gameMode, blindMode, djPickCount, playlistName, playlistHint, djHostTarget, djPenaltyEnabled, djPenaltyAmount }) => {
+  wrapHandler(io, socket, 'host:create', ({ hostName, matchTarget, timeLimit, musicSource, gameMode, blindMode, djPickCount, playlistName, playlistHint, djHostTarget, djPenaltyEnabled, djPenaltyAmount }) => {
     const hostId = uuidv4();
     const room = game.createRoom({ hostId, hostName, matchTarget, timeLimit, musicSource, gameMode, blindMode, djPickCount, playlistName, playlistHint, djHostTarget, djPenaltyEnabled, djPenaltyAmount });
     socket.join(room.code);
@@ -265,7 +287,7 @@ io.on('connection', (socket) => {
   });
 
   // ── Reset room for new game ──────────────────────────────────────────────
-  socket.on('host:reset', ({ matchTarget, timeLimit, musicSource, gameMode, blindMode, djPickCount, playlistName, playlistHint, djHostTarget, djPenaltyEnabled, djPenaltyAmount }) => {
+  wrapHandler(io, socket, 'host:reset', ({ matchTarget, timeLimit, musicSource, gameMode, blindMode, djPickCount, playlistName, playlistHint, djHostTarget, djPenaltyEnabled, djPenaltyAmount }) => {
     const { roomCode } = socket.data;
     stopSpotifyPolling(roomCode);
     const result = game.resetRoom(roomCode, { matchTarget, timeLimit, musicSource, gameMode, blindMode, djPickCount, playlistName, playlistHint, djHostTarget, djPenaltyEnabled, djPenaltyAmount });
@@ -283,7 +305,7 @@ io.on('connection', (socket) => {
   });
 
   // ── Join ─────────────────────────────────────────────────────────────────
-  socket.on('player:join', ({ playerName, roomCode }) => {
+  wrapHandler(io, socket, 'player:join', ({ playerName, roomCode }) => {
     const playerId = uuidv4();
     // Check for duplicate name in this room
     const existingRoom = game.getRoom(roomCode);
@@ -313,7 +335,7 @@ io.on('connection', (socket) => {
   });
 
   // ── Start (move to pick phase) ───────────────────────────────────────────
-  socket.on('host:start', () => {
+  wrapHandler(io, socket, 'host:start', () => {
     const { roomCode } = socket.data;
     const result = game.startGame(roomCode);
     if (result.error) { socket.emit('error', { message: result.error }); return; }
@@ -326,7 +348,7 @@ io.on('connection', (socket) => {
   });
 
   // ── Solo start ───────────────────────────────────────────────────────────
-  socket.on('host:solo_start', () => {
+  wrapHandler(io, socket, 'host:solo_start', () => {
     const { roomCode } = socket.data;
     const room = game.getRoom(roomCode);
     if (!room) { socket.emit('error', { message: 'Room not found' }); return; }
@@ -337,7 +359,7 @@ io.on('connection', (socket) => {
   });
 
   // ── Standard picks ───────────────────────────────────────────────────────
-  socket.on('player:picks', ({ picks }) => {
+  wrapHandler(io, socket, 'player:picks', ({ picks }) => {
     const { roomCode, playerId } = socket.data;
     const result = game.submitPicks(roomCode, playerId, picks);
     if (result.error) { socket.emit('error', { message: result.error }); return; }
@@ -347,7 +369,7 @@ io.on('connection', (socket) => {
   });
 
   // ── Newlywed picks ───────────────────────────────────────────────────────
-  socket.on('player:newlywed_picks', ({ mains, backups, guesses }) => {
+  wrapHandler(io, socket, 'player:newlywed_picks', ({ mains, backups, guesses }) => {
     const { roomCode, playerId } = socket.data;
     const result = game.submitNewlywedPicks(roomCode, playerId, { mains, backups, guesses });
     if (result.error) { socket.emit('error', { message: result.error }); return; }
@@ -357,7 +379,7 @@ io.on('connection', (socket) => {
   });
 
   // ── Gong Show picks ──────────────────────────────────────────────────────
-  socket.on('player:gongshow_picks', ({ mains, gongs }) => {
+  wrapHandler(io, socket, 'player:gongshow_picks', ({ mains, gongs }) => {
     const { roomCode, playerId } = socket.data;
     const result = game.submitGongShowPicks(roomCode, playerId, { mains, gongs });
     if (result.error) { socket.emit('error', { message: result.error }); return; }
@@ -391,7 +413,7 @@ io.on('connection', (socket) => {
   }
 
   // ── Force-start with grace period ─────────────────────────────────────────
-  socket.on('host:force_start', () => {
+  wrapHandler(io, socket, 'host:force_start', () => {
     const { roomCode, isHost } = socket.data;
     if (!isHost) return;
     const room = game.getRoom(roomCode);
@@ -420,7 +442,7 @@ io.on('connection', (socket) => {
     }
   });
 
-  socket.on('host:countdown_done', () => {
+  wrapHandler(io, socket, 'host:countdown_done', () => {
     const { roomCode } = socket.data;
     const result = game.startCountdown(roomCode);
     if (result.error) { socket.emit('error', { message: result.error }); return; }
@@ -436,7 +458,7 @@ io.on('connection', (socket) => {
   });
 
   // ── Blind mode toggle (Gong Show) ────────────────────────────────────────
-  socket.on('host:toggle_blind', () => {
+  wrapHandler(io, socket, 'host:toggle_blind', () => {
     const { roomCode } = socket.data;
     const result = game.toggleBlindMode(roomCode);
     if (result.error) { socket.emit('error', { message: result.error }); return; }
@@ -444,7 +466,7 @@ io.on('connection', (socket) => {
   });
 
   // ── Spotify ──────────────────────────────────────────────────────────────
-  socket.on('host:spotify_connect', async ({ accessToken, refreshToken }) => {
+  wrapHandler(io, socket, 'host:spotify_connect', async ({ accessToken, refreshToken }) => {
     const { roomCode } = socket.data;
     const key = roomCode || socket.id;
     spotifyTokens.set(key, { accessToken, refreshToken, connectedAt: Date.now(), expiresAt: Date.now() + 3600 * 1000 });
@@ -452,7 +474,7 @@ io.on('connection', (socket) => {
     console.log('Spotify connected for', key);
   });
 
-  socket.on('host:spotify_start_polling', () => {
+  wrapHandler(io, socket, 'host:spotify_start_polling', () => {
     const { roomCode } = socket.data;
     const room = game.getRoom(roomCode);
     if (!room || room.musicSource !== 'spotify') return;
@@ -460,12 +482,12 @@ io.on('connection', (socket) => {
     startSpotifyPolling(roomCode);
   });
 
-  socket.on('host:spotify_stop_polling', () => stopSpotifyPolling(socket.data.roomCode));
+  wrapHandler(io, socket, 'host:spotify_stop_polling', () => stopSpotifyPolling(socket.data.roomCode));
 
   // ── AudD identified track ─────────────────────────────────────────────────
   // The host client sends this after a successful AudD identification.
   // We treat it the same as a Spotify-detected track change.
-  socket.on('host:audd_song', ({ title, artist }) => {
+  wrapHandler(io, socket, 'host:audd_song', ({ title, artist }) => {
     const { roomCode } = socket.data;
     if (!title || !artist) return;
     const room = game.getRoom(roomCode);
@@ -482,7 +504,7 @@ io.on('connection', (socket) => {
   });
 
   // ── Manual song play ─────────────────────────────────────────────────────
-  socket.on('host:play_song', ({ songTitle }) => {
+  wrapHandler(io, socket, 'host:play_song', ({ songTitle }) => {
     const { roomCode } = socket.data;
     const result = game.playSong(roomCode, songTitle, null);
     if (result.error) { socket.emit('error', { message: result.error }); return; }
@@ -490,14 +512,14 @@ io.on('connection', (socket) => {
     broadcastSongResult(roomCode, result, songTitle);
   });
 
-  socket.on('host:add_time', () => {
+  wrapHandler(io, socket, 'host:add_time', () => {
     const { roomCode } = socket.data;
     const result = game.addTime(roomCode, 5);
     if (result.error) { socket.emit('error', { message: result.error }); return; }
     io.to(roomCode).emit('game:updated', { room: result.room });
   });
 
-  socket.on('host:set_jam_link', ({ link }) => {
+  wrapHandler(io, socket, 'host:set_jam_link', ({ link }) => {
     const { roomCode } = socket.data;
     const room = game.getRoom(roomCode);
     if (!room) return;
@@ -506,7 +528,7 @@ io.on('connection', (socket) => {
     io.to(roomCode).emit('game:updated', { room });
   });
 
-  socket.on('host:end_game', () => {
+  wrapHandler(io, socket, 'host:end_game', () => {
     const { roomCode } = socket.data;
     stopSpotifyPolling(roomCode);
     stopAuddPolling(roomCode);
@@ -516,8 +538,28 @@ io.on('connection', (socket) => {
     io.to(roomCode).emit('game:over', { room: result.room });
   });
 
+  // ── Explicit leave (non-host) ────────────────────────────────────────────
+  // Unlike a dropped connection, this actually removes the player so they
+  // stop blocking pick-phase completion and don't linger in the room forever.
+  // Hosts leave via host:end_game instead — their room can't continue without them.
+  wrapHandler(io, socket, 'player:leave', () => {
+    const { roomCode, playerId, isHost } = socket.data;
+    if (!roomCode || !playerId || isHost) return;
+    const result = game.removePlayer(roomCode, playerId);
+    if (result.error) { socket.emit('error', { message: result.error }); return; }
+    socket.leave(roomCode);
+    socket.data.roomCode = null;
+    socket.data.playerId = null;
+    if (!result.roomDeleted) {
+      io.to(roomCode).emit('lobby:updated', { room: result.room });
+      io.to(roomCode).emit('game:updated', { room: result.room });
+      checkAllConfirmedAndStart(roomCode);
+    }
+    console.log(playerId, 'left room', roomCode);
+  });
+
   // ── Disconnect ───────────────────────────────────────────────────────────
-  socket.on('disconnect', () => {
+  wrapHandler(io, socket, 'disconnect', () => {
     const { roomCode, playerId } = socket.data;
     if (roomCode && playerId) {
       game.playerDisconnect(roomCode, playerId);
@@ -659,6 +701,17 @@ function scheduleTimer(roomCode) {
     }
   }, 1000);
 }
+
+// Last-resort net: log and keep running instead of dying silently. Individual
+// socket handlers are already caught by wrapHandler above; this catches
+// anything else (timers, async pool-generation callbacks, etc.) so a crash
+// always leaves a trace in Railway's logs.
+process.on('uncaughtException', (err) => {
+  console.error(`[uncaughtException] ${new Date().toISOString()}`, err);
+});
+process.on('unhandledRejection', (err) => {
+  console.error(`[unhandledRejection] ${new Date().toISOString()}`, err);
+});
 
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`Pandora Bingo server running on port ${PORT}`);

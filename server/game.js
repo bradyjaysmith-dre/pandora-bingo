@@ -83,6 +83,20 @@ function playerDisconnect(code, playerId) {
   if (player) player.connected = false;
 }
 
+// Explicit leave (as opposed to a dropped connection): actually removes the
+// player from the room so they stop blocking pick-phase completion and don't
+// linger in the player list forever.
+function removePlayer(code, playerId) {
+  const room = getRoom(code);
+  if (!room) return { error: 'Room not found' };
+  room.players = room.players.filter(p => p.id !== playerId);
+  if (room.players.length === 0) {
+    deleteRoom(code);
+    return { room: null, roomDeleted: true };
+  }
+  return { room };
+}
+
 function resetRoom(code, { matchTarget, timeLimit, musicSource, gameMode, blindMode, djPickCount, playlistName, playlistHint, djHostTarget, djPenaltyEnabled, djPenaltyAmount }) {
   const room = getRoom(code);
   if (!room) return { error: 'Room not found' };
@@ -476,7 +490,7 @@ function endGameDJBattle(room) {
 function deleteRoom(code) { rooms.delete(code); }
 
 module.exports = {
-  createRoom, getRoom, joinRoom, rejoinRoom, playerDisconnect, resetRoom,
+  createRoom, getRoom, joinRoom, rejoinRoom, playerDisconnect, removePlayer, resetRoom,
   submitPicks, submitNewlywedPicks, submitGongShowPicks,
   toggleBlindMode, startGame, startCountdown,
   playSong, addTime, endGame, deleteRoom,

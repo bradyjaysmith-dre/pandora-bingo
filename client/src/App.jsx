@@ -185,6 +185,18 @@ export default function App() {
       setError(message); setTimeout(() => setError(null), 4000);
     });
 
+    // A saved room code failed to rejoin (room no longer exists on the server —
+    // e.g. the host's game crashed or the process restarted). Clear the dead
+    // session instead of letting reconnection retry it forever.
+    socket.on('room:rejoin_failed', ({ message }) => {
+      clearSession();
+      setRoom(null); setPlayerId(null); setIsHost(false);
+      setScreen('home');
+      window.history.replaceState({ screen: 'home' }, '');
+      setError(message || 'Your previous room no longer exists — start a new one.');
+      setTimeout(() => setError(null), 5000);
+    });
+
     return () => socket.removeAllListeners();
   }, [isSpotifyCallback]);
 
@@ -214,6 +226,15 @@ export default function App() {
   // Leave game confirmed from modal
   const confirmLeave = () => {
     setLeaveModal(false);
+    if (isHost) {
+      // Ending as host tears the room down server-side (stops polling/timers,
+      // marks it ended) rather than leaving it running with nobody connected.
+      socket.emit('host:end_game');
+    } else {
+      // Frees this player's slot server-side so they stop blocking pick-phase
+      // completion for everyone else still at the table.
+      socket.emit('player:leave');
+    }
     goHome();
   };
 
@@ -323,6 +344,29 @@ export default function App() {
       {screen === 'game' && <GameScreen room={room} playerId={playerId} isHost={isHost} spotifyTokens={spotifyTokens} nowPlaying={nowPlaying} />}
       {screen === 'end' && <EndScreen room={room} playerId={playerId} isHost={isHost} onPlayAgain={handlePlayAgain} onLeave={goHome} />}
       {room && screen !== 'home' && screen !== 'end' && <RoomCodeBadge code={room.code} />}
+      {room && screen !== 'home' && screen !== 'end' && (
+        <button
+          onClick={() => setLeaveModal(true)}
+          aria-label="Leave room"
+          style={{
+            position: 'fixed',
+            top: 'calc(12px + env(safe-area-inset-top))',
+            right: 12,
+            zIndex: 999,
+            padding: '6px 12px',
+            borderRadius: 8,
+            border: '1px solid rgba(248,113,113,0.3)',
+            background: 'rgba(26,26,46,0.85)',
+            color: 'rgba(248,113,113,0.85)',
+            fontSize: 12,
+            fontWeight: 700,
+            cursor: 'pointer',
+            backdropFilter: 'blur(4px)',
+          }}
+        >
+          ✕ Leave
+        </button>
+      )}
     </div>
   );
 }
