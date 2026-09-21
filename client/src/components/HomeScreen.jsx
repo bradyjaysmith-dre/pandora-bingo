@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import socket from '../socket.js';
+import { GAME_MODES } from '../gameModeInfo.js';
 
 const GENRES = ['Pop', 'Hip-Hop', 'Rock', 'R&B', 'Country', 'Electronic'];
 
@@ -327,33 +328,33 @@ export default function HomeScreen({ spotifyConnected, onLeaderboard }) {
         <div style={s.divider} />
         <label style={s.label}>Game mode</label>
 
-        <div style={s.gameModeCard(gameMode === 'standard', C.cyan)} onClick={() => setGameMode('standard')}>
-          <div style={s.gameModeTitle(gameMode === 'standard', C.cyan)}>Standard</div>
-          <div style={s.gameModeSub}>Pick 5 songs or artists you predict will play. First to match wins.</div>
+        <div style={s.gameModeCard(gameMode === 'standard', GAME_MODES.standard.accent)} onClick={() => setGameMode('standard')}>
+          <div style={s.gameModeTitle(gameMode === 'standard', GAME_MODES.standard.accent)}>{GAME_MODES.standard.label}</div>
+          <div style={s.gameModeSub}>{GAME_MODES.standard.description}</div>
         </div>
 
-        <div style={s.gameModeCard(gameMode === 'newlywed', C.amber)} onClick={() => setGameMode('newlywed')}>
-          <div style={s.gameModeTitle(gameMode === 'newlywed', C.amber)}>
-            Newlywed Bingo
+        <div style={s.gameModeCard(gameMode === 'newlywed', GAME_MODES.newlywed.accent)} onClick={() => setGameMode('newlywed')}>
+          <div style={s.gameModeTitle(gameMode === 'newlywed', GAME_MODES.newlywed.accent)}>
+            {GAME_MODES.newlywed.label}
             <span style={s.badge('rgba(255,179,71,0.15)', C.amber, 'rgba(255,179,71,0.4)')}>NEW</span>
           </div>
-          <div style={s.gameModeSub}>Pick 5 mains + 3 backups + 3 secret guesses. Sabotage opponents, earn wildcards.</div>
+          <div style={s.gameModeSub}>{GAME_MODES.newlywed.description}</div>
         </div>
 
-        <div style={s.gameModeCard(gameMode === 'gongshow', '#ef4444')} onClick={() => setGameMode('gongshow')}>
-          <div style={s.gameModeTitle(gameMode === 'gongshow', '#ef4444')}>
-            Gong Show Bingo
+        <div style={s.gameModeCard(gameMode === 'gongshow', GAME_MODES.gongshow.accent)} onClick={() => setGameMode('gongshow')}>
+          <div style={s.gameModeTitle(gameMode === 'gongshow', GAME_MODES.gongshow.accent)}>
+            {GAME_MODES.gongshow.label}
             <span style={s.badge('rgba(239,68,68,0.15)', '#ef4444', 'rgba(239,68,68,0.4)')}>NEW</span>
           </div>
-          <div style={s.gameModeSub}>Pick 10 songs + 5 secret gong songs. Gong another player's pick to cancel their point — but duplicate gongers cancel each other and lose a point.</div>
+          <div style={s.gameModeSub}>{GAME_MODES.gongshow.description}</div>
         </div>
 
-        <div style={s.gameModeCard(gameMode === 'djbattle', '#a855f7')} onClick={() => { setGameMode('djbattle'); setTimeLimit(40); }}>
-          <div style={s.gameModeTitle(gameMode === 'djbattle', '#a855f7')}>
-            DJ Battle
+        <div style={s.gameModeCard(gameMode === 'djbattle', GAME_MODES.djbattle.accent)} onClick={() => { setGameMode('djbattle'); setTimeLimit(40); }}>
+          <div style={s.gameModeTitle(gameMode === 'djbattle', GAME_MODES.djbattle.accent)}>
+            {GAME_MODES.djbattle.label}
             <span style={s.badge('rgba(168,85,247,0.15)', '#a855f7', 'rgba(168,85,247,0.4)')}>NEW</span>
           </div>
-          <div style={s.gameModeSub}>Host plays their own playlist. Players pick artists they think will play. Score when you guess right — host scores when nobody guesses their artist.</div>
+          <div style={s.gameModeSub}>{GAME_MODES.djbattle.description}</div>
         </div>
 
         {gameMode === 'djbattle' && (
@@ -373,55 +374,61 @@ export default function HomeScreen({ spotifyConnected, onLeaderboard }) {
               onChange={e => setPlaylistHint(e.target.value)}
               placeholder="e.g. All artists who peaked in the 2000s"
             />
-            <label style={{ ...s.label, color: '#a855f7' }}>Artists per player</label>
-            <input
-              type="number"
-              style={{ ...s.numInput, width: '100%', boxSizing: 'border-box', marginBottom: 0, border: '1px solid rgba(168,85,247,0.4)' }}
-              min={1} max={15}
-              value={djPickCount}
-              onChange={e => setDjPickCount(Math.max(1, Math.min(15, parseInt(e.target.value) || 1)))}
-            />
-            <div style={{ fontSize: 11, color: C.muted, marginTop: 4, marginBottom: 10 }}>How many artists each player picks (1–15). Default: 5.</div>
+            <details>
+              <summary style={{ fontSize: 12, color: '#a855f7', fontWeight: 700, cursor: 'pointer', marginBottom: 10 }}>
+                Advanced DJ settings <span style={{ color: C.muted, fontWeight: 400 }}>(defaults work fine for most games)</span>
+              </summary>
 
-            <label style={{ ...s.label, color: '#a855f7' }}>DJ score target <span style={{ color: C.muted, fontWeight: 400, textTransform: 'none' }}>(DJ's own win threshold)</span></label>
-            <input
-              type="number"
-              style={{ ...s.numInput, width: '100%', boxSizing: 'border-box', marginBottom: 0, border: '1px solid rgba(168,85,247,0.4)' }}
-              min={1} max={50}
-              value={djHostTarget}
-              onChange={e => setDjHostTarget(Math.max(1, parseInt(e.target.value) || 1))}
-            />
-            <div style={{ fontSize: 11, color: C.muted, marginTop: 4, marginBottom: 10 }}>DJ wins when reaching this score. Default: 10.</div>
+              <label style={{ ...s.label, color: '#a855f7', marginTop: 10 }}>Artists per player</label>
+              <input
+                type="number"
+                style={{ ...s.numInput, width: '100%', boxSizing: 'border-box', marginBottom: 0, border: '1px solid rgba(168,85,247,0.4)' }}
+                min={1} max={15}
+                value={djPickCount}
+                onChange={e => setDjPickCount(Math.max(1, Math.min(15, parseInt(e.target.value) || 1)))}
+              />
+              <div style={{ fontSize: 11, color: C.muted, marginTop: 4, marginBottom: 10 }}>How many artists each player picks (1–15). Default: 5.</div>
 
-            <div
-              style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', borderRadius: 8, background: 'rgba(168,85,247,0.06)', border: `1px solid ${djPenaltyEnabled ? 'rgba(168,85,247,0.5)' : 'rgba(168,85,247,0.2)'}`, marginBottom: 6, cursor: 'pointer' }}
-              onClick={() => setDjPenaltyEnabled(!djPenaltyEnabled)}
-            >
-              <div>
-                <div style={{ fontSize: 13, color: djPenaltyEnabled ? '#a855f7' : C.text, fontWeight: 700 }}>⚡ DJ penalty mode</div>
-                <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>DJ loses points when a player correctly guesses an artist.</div>
+              <label style={{ ...s.label, color: '#a855f7' }}>DJ score target <span style={{ color: C.muted, fontWeight: 400, textTransform: 'none' }}>(DJ's own win threshold)</span></label>
+              <input
+                type="number"
+                style={{ ...s.numInput, width: '100%', boxSizing: 'border-box', marginBottom: 0, border: '1px solid rgba(168,85,247,0.4)' }}
+                min={1} max={50}
+                value={djHostTarget}
+                onChange={e => setDjHostTarget(Math.max(1, parseInt(e.target.value) || 1))}
+              />
+              <div style={{ fontSize: 11, color: C.muted, marginTop: 4, marginBottom: 10 }}>DJ wins when reaching this score. Default: 10.</div>
+
+              <div
+                style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', borderRadius: 8, background: 'rgba(168,85,247,0.06)', border: `1px solid ${djPenaltyEnabled ? 'rgba(168,85,247,0.5)' : 'rgba(168,85,247,0.2)'}`, marginBottom: 6, cursor: 'pointer' }}
+                onClick={() => setDjPenaltyEnabled(!djPenaltyEnabled)}
+              >
+                <div>
+                  <div style={{ fontSize: 13, color: djPenaltyEnabled ? '#a855f7' : C.text, fontWeight: 700 }}>⚡ DJ penalty mode</div>
+                  <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>DJ loses points when a player correctly guesses an artist.</div>
+                </div>
+                <div style={{ width: 20, height: 20, borderRadius: 4, border: `2px solid ${djPenaltyEnabled ? '#a855f7' : C.border}`, background: djPenaltyEnabled ? '#a855f7' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  {djPenaltyEnabled && <span style={{ color: '#fff', fontSize: 13, fontWeight: 800 }}>✓</span>}
+                </div>
               </div>
-              <div style={{ width: 20, height: 20, borderRadius: 4, border: `2px solid ${djPenaltyEnabled ? '#a855f7' : C.border}`, background: djPenaltyEnabled ? '#a855f7' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                {djPenaltyEnabled && <span style={{ color: '#fff', fontSize: 13, fontWeight: 800 }}>✓</span>}
-              </div>
-            </div>
 
-            {djPenaltyEnabled && (
-              <>
-                <label style={{ ...s.label, color: '#a855f7' }}>Penalty amount <span style={{ color: C.muted, fontWeight: 400, textTransform: 'none' }}>(points lost per matched song)</span></label>
-                <input
-                  type="number"
-                  style={{ ...s.numInput, width: '100%', boxSizing: 'border-box', marginBottom: 0, border: '1px solid rgba(168,85,247,0.4)' }}
-                  min={0.1} max={5} step={0.1}
-                  value={djPenaltyAmount}
-                  onChange={e => {
-                    const v = parseFloat(e.target.value);
-                    if (!isNaN(v)) setDjPenaltyAmount(Math.round(Math.max(0.1, Math.min(5, v)) * 10) / 10);
-                  }}
-                />
-                <div style={{ fontSize: 11, color: C.muted, marginTop: 4 }}>Default: 1.0. One decimal place allowed.</div>
-              </>
-            )}
+              {djPenaltyEnabled && (
+                <>
+                  <label style={{ ...s.label, color: '#a855f7' }}>Penalty amount <span style={{ color: C.muted, fontWeight: 400, textTransform: 'none' }}>(points lost per matched song)</span></label>
+                  <input
+                    type="number"
+                    style={{ ...s.numInput, width: '100%', boxSizing: 'border-box', marginBottom: 0, border: '1px solid rgba(168,85,247,0.4)' }}
+                    min={0.1} max={5} step={0.1}
+                    value={djPenaltyAmount}
+                    onChange={e => {
+                      const v = parseFloat(e.target.value);
+                      if (!isNaN(v)) setDjPenaltyAmount(Math.round(Math.max(0.1, Math.min(5, v)) * 10) / 10);
+                    }}
+                  />
+                  <div style={{ fontSize: 11, color: C.muted, marginTop: 4 }}>Default: 1.0. One decimal place allowed.</div>
+                </>
+              )}
+            </details>
           </div>
         )}
 

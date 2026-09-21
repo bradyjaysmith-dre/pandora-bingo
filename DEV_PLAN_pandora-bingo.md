@@ -87,7 +87,7 @@ See feature spec below. Manual/copy-paste only for v1 — no new external API in
 
 ---
 
-### Session 5 — Setup flow & onboarding 🔲
+### Session 5 — Setup flow & onboarding 🔶 (mode copy + form trimming done; "How to Play" video/GIF deferred — no content yet)
 **Tasks:**
 - Trim the number of screens/decisions between opening the app and having a live room, especially for first-time hosts
 - Add a one-line, plain-language description of each mode visible on `HomeScreen.jsx` before the host commits to it
@@ -265,3 +265,21 @@ Dre tested Session 2 against the live Railway deploy (iOS Safari hosting, Androi
 **Not yet done — needs Dre's on-device pass:** the Copy button's clipboard behavior specifically is worth a real-device check (clipboard permissions can behave differently across mobile Safari/Chrome than in a desktop dev environment) — not verified beyond the build-output string check above.
 
 **Next:** Session 5 (Setup flow & onboarding) is next per the plan.
+
+### 2026-09-21 — Session 5: Setup flow & onboarding
+
+**Scope decisions made with Dre before starting:**
+- Extended scope beyond DEV_PLAN's listed file (`HomeScreen.jsx` only) to also touch `LobbyScreen.jsx` — the acceptance criteria requires a first-time *player* to understand the mode, but only the host ever saw mode descriptions (during setup). Dre confirmed extending to Lobby.
+- "Trim screens/decisions" resolved as: collapse DJ Battle's secondary tuning fields behind an "Advanced" toggle rather than restructuring the form into multiple screens (the form already has sensible defaults for everything except name + playlist name — the real problem was visual length, not step count).
+
+**Shipped:**
+- New `client/src/gameModeInfo.js` — single source of truth for each mode's label/accent/description, imported by both `HomeScreen.jsx` and `LobbyScreen.jsx` so the copy can't drift out of sync between the two screens.
+- `LobbyScreen.jsx`: added the same one-line mode description already used on `HomeScreen.jsx`, shown to all players (not just the host) below the existing badge row. Also fixed a real pre-existing gap while touching this file: DJ Battle rooms had no mode badge in the Lobby at all (Newlywed and Gong Show did) — added `🎧 DJ Battle`.
+- `HomeScreen.jsx`: DJ Battle's "Artists per player," "DJ score target," and "DJ penalty mode" fields (4 fields, only relevant to DJ Battle hosts, all with working defaults) are now collapsed behind a native `<details>`/`<summary>` "Advanced DJ settings" toggle — same collapsible pattern already used elsewhere in this codebase (`GameScreen.jsx`'s manual song-marking fallbacks). Defaults to closed. Playlist name/hint stayed always-visible since DJ Battle can't function without them.
+- `npm run build` verified green; confirmed all new copy strings present in the production build output.
+
+**Deferred, not built:** the "How to Play" explainer video/GIF task — DEV_PLAN itself notes this content is "produced outside this session," and no video/GIF asset exists yet. No placeholder UI was added for it; this stays open until Dre supplies the content.
+
+**Not yet done — needs Dre's on-device pass:** none of this session's UI has been tapped on a real device (the `<details>` collapse interaction in particular is worth checking on mobile Safari/Chrome, since native `<details>` styling can vary across browsers).
+
+**Next:** Session 6 (Beta readiness pass) is next per the plan, which already carries the Android Chrome scaling bug flagged 2026-09-21. The "How to Play" video/GIF remains an open item under Session 5 itself, blocked on content from Dre — not moved to Session 6.

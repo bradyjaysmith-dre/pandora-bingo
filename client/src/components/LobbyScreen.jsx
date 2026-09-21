@@ -1,5 +1,6 @@
 import React from 'react';
 import socket from '../socket.js';
+import { GAME_MODES } from '../gameModeInfo.js';
 
 // ─── Retro TV colour tokens ──────────────────────────────────────────────────
 const C = {
@@ -66,6 +67,7 @@ export default function LobbyScreen({ room, playerId, isHost }) {
       textShadow: `0 0 16px rgba(255,179,71,0.7), 0 0 32px rgba(255,179,71,0.35)`,
     },
     codeShareHint: { fontSize: 12, color: C.muted, marginTop: 6 },
+    modeDescription: { fontSize: 13, color: C.muted, textAlign: 'center', lineHeight: 1.5, marginBottom: 20 },
     // Meta info
     meta: { display: 'flex', gap: 12, marginBottom: 20, flexWrap: 'wrap', justifyContent: 'center' },
     metaBadge: {
@@ -142,7 +144,12 @@ export default function LobbyScreen({ room, playerId, isHost }) {
           {room.pickMode === 'artists' && <span style={s.metaBadge}>Artist mode</span>}
           {room.gameMode === 'newlywed' && <span style={{ ...s.metaBadge, color: C.amber, borderColor: 'rgba(255,179,71,0.3)', background: C.amberDim }}>🎯 Newlywed</span>}
           {room.gameMode === 'gongshow' && <span style={{ ...s.metaBadge, color: '#f87171', borderColor: 'rgba(239,68,68,0.3)', background: 'rgba(239,68,68,0.1)' }}>🔔 Gong Show</span>}
+          {room.gameMode === 'djbattle' && <span style={{ ...s.metaBadge, color: '#a855f7', borderColor: 'rgba(168,85,247,0.3)', background: 'rgba(168,85,247,0.1)' }}>🎧 DJ Battle</span>}
         </div>
+
+        {GAME_MODES[room.gameMode] && (
+          <div style={s.modeDescription}>{GAME_MODES[room.gameMode].description}</div>
+        )}
 
         <div style={s.sectionLabel}>Players ({room.players.length})</div>
         <div style={s.playerList}>
