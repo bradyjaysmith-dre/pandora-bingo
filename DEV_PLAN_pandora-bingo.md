@@ -33,7 +33,7 @@ First real-world outdoor multiplayer test. Spotify connection failed; mic detect
 
 ## Session plan
 
-### Session 1 — Mobile navigation & button rendering ✅ (on-device pass confirmed on Android)
+### Session 1 — Mobile navigation & button rendering ✅ (accepted — Android confirmed; iOS Safari + PWA-standalone still need real testing)
 **Why first:** blocks reliable re-testing of everything else; this class of bug makes the app look broken before any real gameplay issue even comes up.
 
 **Tasks:**
@@ -48,7 +48,7 @@ First real-world outdoor multiplayer test. Spotify connection failed; mic detect
 
 ---
 
-### Session 2 — Room lifecycle & reconnection hardening 🔶 (code complete, on-device retest pending)
+### Session 2 — Room lifecycle & reconnection hardening ✅ (accepted — logic verified via scripted tests + deployed to Railway; on-device confirmation still needed for most of it, see delivery log)
 **Tasks:**
 - Add an explicit "Leave Room" control for non-host players — frees their slot server-side (`server/game.js`, new `player:leave` socket event), doesn't affect other players
 - Add/confirm an "End Game" confirmation for the host — extend the existing back-button interception logic in `App.jsx` rather than duplicating it
@@ -103,6 +103,7 @@ See feature spec below. Manual/copy-paste only for v1 — no new external API in
 **Tasks:**
 - Close out the pending v12.1 PWA on-device testing checklist: Android install flow, iOS Add to Home Screen, standalone launch, background reminder notification, Wake Lock behavior
 - Cross-browser pass specifically targeting the button/safe-area bug class from Session 1, since it varies by device
+- **New, flagged 2026-09-21:** on a real Android device in mobile Chrome, the pick screen renders with a large empty area below the search/toggle controls and above the fixed footer — content reads as noticeably smaller/sparser than expected for the screen size. Viewport meta tag (`width=device-width, initial-scale=1.0`) and CSS were checked and look correct, so root cause is unconfirmed — could be the specific device, mobile Chrome's viewport handling, or something in the app's layout. Needs a dedicated look, ideally with browser devtools remote-debugging the actual device rather than guessing from a screenshot.
 - Add a lightweight in-app feedback mechanism (even a simple "report a bug" link/form) — beta testers won't be sitting next to the host to narrate problems live
 
 **Acceptance criteria:** PWA checklist fully checked off; a beta tester hitting a bug has a way to tell Dre about it without a group chat message.
@@ -210,4 +211,22 @@ _Claude Code: append a dated entry here after each session — what shipped, wha
 
 **Out of scope, by design:** role-based unwind logic for Newlywed/DJ Battle when a player leaves mid-game (Open Decision #2 said not to block Session 2 on this).
 
-**Resuming after a break:** nothing from this session is committed yet — changes are uncommitted in the working tree. Still need Dre's go-ahead on the diff before `git add . && git commit`. Session 3 (Playlist mental model / Selection Summary) is next once Session 2's on-device pass is done.
+**Resuming after a break:** committed as `4090bef`, pushed to `origin/main`, and confirmed deployed on Railway (status SUCCESS, matching commit hash, verified via `railway status`). Session 3 (Playlist mental model / Selection Summary) is next.
+
+### 2026-09-21 — On-device testing round (Sessions 1 & 2) + acceptance
+
+Dre tested Session 2 against the live Railway deploy (iOS Safari hosting, Android Chrome joining). Accepting Sessions 1 & 2 as shipped. Per Dre's instruction: only mark testing items as confirmed where he explicitly said so — everything else stays flagged as needing real-device testing, even though the underlying code is accepted and live.
+
+**Confirmed working (real devices, Railway production):**
+- End-to-end join flow: iOS Safari hosts a room, Android Chrome (mobile browser, not PWA) joins by room code and reaches the pick screen. This was initially misreported as a broken "Join Room" button — root cause was that the Android device was pointed at the Tailscale-local dev build (unreachable from that network), not a code bug. Confirmed via Railway HTTP/network logs: zero requests from the Android device reached Railway during the failed attempt, then a full request trail appeared once re-tested against the real Railway URL.
+
+**New issue found — flagged for later, not fixed now (Dre's call):**
+- Android Chrome mobile browser (real device): pick screen content renders noticeably too small, with a large empty gap below the search/toggle area and above the fixed footer. Confirmed by Dre as a genuine rendering issue, not just the expected "nothing searched yet" empty state. Viewport meta tag and CSS were checked and look correct — root cause unconfirmed (device vs. browser vs. app code). Added to Session 6 as a flagged item; needs dedicated investigation, ideally with remote devtools on the actual device.
+
+**Still flagged as needing real-device testing (not yet confirmed by Dre, code is shipped regardless):**
+- iOS Safari: Join Room button appearance, DJ Battle card, pick-screen safe-area/footer layout, new "✕ Leave" button placement against the notch/Dynamic Island (all Session 1 + Session 2 UI changes)
+- Real app-backgrounding/reconnect retest (the original fire-pit "rejoin didn't hold up in the field" report) — Session 2's fix was only verified via scripted socket tests, not a real phone backgrounding a real tab
+- Host-leave and player-leave flows on real devices (server logic confirmed via scripted tests + this session's join-flow confirmation, but the Leave button UX itself hasn't been tapped on a real phone)
+- PWA-standalone mode (Add to Home Screen) — not retested since the Session 1 layout changes
+
+**Next:** Session 3 (Playlist mental model / Selection Summary) is next per the plan. The Android Chrome scaling issue stays parked under Session 6 until Dre wants to dig into it.
