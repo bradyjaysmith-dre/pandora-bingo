@@ -869,7 +869,7 @@ export default function GameScreen({ room, playerId, isHost, spotifyTokens, nowP
   const isDJBattle = room.gameMode === 'djbattle';
 
   const s = {
-    wrap: { maxWidth:700, margin:'0 auto', padding:16 },
+    wrap: { maxWidth:700, margin:'0 auto', padding:16, paddingBottom:'calc(16px + env(safe-area-inset-bottom))' },
     topBar: { display:'flex', alignItems:'center', justifyContent:'space-between', padding:'16px 0', marginBottom:8 },
     timer: {
       fontSize:36, fontWeight:800,

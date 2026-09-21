@@ -105,7 +105,12 @@ export default function HomeScreen({ spotifyConnected, onLeaderboard }) {
   }, []);
 
   const s = {
-    outer: { position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', padding: 16 },
+    outer: {
+      position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh',
+      padding: 16,
+      paddingTop: 'max(16px, env(safe-area-inset-top))',
+      paddingBottom: 'max(16px, env(safe-area-inset-bottom))',
+    },
     card: {
       position: 'relative', zIndex: 1,
       background: C.panel,
@@ -343,7 +348,7 @@ export default function HomeScreen({ spotifyConnected, onLeaderboard }) {
           <div style={s.gameModeSub}>Pick 10 songs + 5 secret gong songs. Gong another player's pick to cancel their point — but duplicate gongers cancel each other and lose a point.</div>
         </div>
 
-        <div style={s.gameModeCard(gameMode === 'djbattle', '#a855f7')} onClick={() => { setGameMode('djbattle'); setPickMode('artists'); setTimeLimit(40); }}>
+        <div style={s.gameModeCard(gameMode === 'djbattle', '#a855f7')} onClick={() => { setGameMode('djbattle'); setTimeLimit(40); }}>
           <div style={s.gameModeTitle(gameMode === 'djbattle', '#a855f7')}>
             DJ Battle
             <span style={s.badge('rgba(168,85,247,0.15)', '#a855f7', 'rgba(168,85,247,0.4)')}>NEW</span>

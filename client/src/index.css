@@ -19,6 +19,16 @@ body {
 
 input, select, button, textarea { font-family: inherit; }
 
+/* Mobile browsers (iOS Safari, Android Chrome/WebView) apply native button
+   chrome on top of author styles by default. Combined with this app's
+   translucent/rgba button backgrounds, that native chrome can make buttons
+   read as greyed-out/disabled even though they're fully tappable. */
+button {
+  -webkit-appearance: none;
+  appearance: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
 /* Orbitron heading helper */
 .orbitron {
   font-family: 'Orbitron', monospace;

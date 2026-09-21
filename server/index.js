@@ -13,7 +13,7 @@ const lb = require('./leaderboard');
 const { getDynamicPool } = require('./dynamic-songs');
 
 const app = express();
-const PORT = process.env.PORT || 3002;
+const PORT = process.env.PORT || 3009;
 
 // ── Origin resolution ────────────────────────────────────────────────────────
 // On Replit, REPLIT_DEV_DOMAIN or REPLIT_DOMAINS is set.

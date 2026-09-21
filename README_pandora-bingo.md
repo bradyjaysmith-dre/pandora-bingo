@@ -13,6 +13,71 @@
 
 A real-time multiplayer music prediction game. Pick songs or artists you think will play — first to match wins. Designed to run on phones and any modern browser — no app install required.
 
+## 🔥 Active Sprint — Beta-Readiness (Target: Public Beta by December 2026)
+
+**Status:** In progress. This is a separate, near-term track from the Planned Rewrite below — it's about widening testing on the *current* Railway-hosted PWA (no app store, no real accounts, no prize infrastructure), not the store-ready rewrite. The December beta target does not depend on any decision in the Planned Rewrite section.
+
+Full session-by-session task breakdown, acceptance criteria, and delivery log live in **`DEV_PLAN_pandora-bingo.md`** — read that file first at the start of any Claude Code session on this track.
+
+### Playtest findings — September 2026 (outdoor/fire-pit session)
+
+First real-world outdoor multiplayer test. Spotify connection failed; mic detection fallback worked fine. Findings:
+
+**Blocking / critical**
+- "Join Room" button renders as visually disabled on mobile browsers even when it should be active
+- "Confirm Selection" button (bottom of pick screen) gets covered by the phone's OS home/back gesture bar
+- No "Leave Room" / "Leave Game" control for players or host
+- Returning to a room after navigating away in the phone browser didn't reliably work, despite existing session-persistence/rejoin logic
+- When the host's game errored out mid-session, players couldn't cleanly exit the dead room to join the host's replacement room
+- Root cause of the host-side crash is unknown — no error logging currently captures it
+
+**Design mismatch**
+- Players believed their artist picks were shaping which songs would play. They weren't — the host had just selected an existing Spotify playlist shuffling independently of any picks. Nothing in the current UI corrects this assumption.
+
+**Onboarding gap**
+- First-time players (especially under time/social pressure, late at night) struggled to quickly grasp what each of the 4 game modes does
+
+### Priority next steps
+
+1. **Mobile navigation & button rendering** — safe-area-inset audit on all fixed/sticky CTA buttons; fix "Join Room" disabled-appearance bug; real-device testing (not just emulator)
+2. **Room lifecycle & leave/recovery** — explicit Leave Room/Leave Game controls; graceful "room no longer exists" state; server-side error logging around game state transitions; re-verify existing rejoin flow
+3. **Playlist mental model — quick fix** — explicit in-app copy clarifying that picks are predictions, not playlist inputs; host-facing Selection Summary panel (aggregated picks after pick phase closes)
+4. **New: player-influenced playlist mode (MVP)** — host gets a suggested AI-playlist prompt string built from the aggregated picks, to paste into Spotify/Apple Music's own playlist generation — manual/copy-paste only, no new external API integration for v1
+5. **Setup flow & onboarding** — trim decisions in host setup; plain-language per-mode descriptions before commitment; hook in a short explainer video/GIF once produced
+6. **Beta readiness pass** — close out the pending PWA on-device testing checklist (install flow, standalone launch, Wake Lock, background reminder); cross-browser check on the button/safe-area bug class; lightweight feedback mechanism for testers who aren't sitting next to the host
+
+See `DEV_PLAN_pandora-bingo.md` for full scope, files touched per session, and open decisions.
+
+---
+
+## 🚧 Planned Rewrite — Public Release Track
+
+**Status:** Planning phase (as of July 2026). The current v12.x codebase below is the family/friends version. A rewrite is planned to take Pandora Bingo to the Apple App Store and Google Play Store, with real user accounts and prize-backed contests. This section is the living decision log for that effort — update it as choices firm up, same pattern as the Agon project. Decoupled from the Beta-Readiness Sprint above.
+
+### Rewrite goals
+1. **App store readiness** — Apple App Store + Google Play. Current app is a PWA (v12.1); rewrite will need a native/hybrid shell (React Native/Expo is the leading candidate, matching the approach already planned for Agon Phase 3) and store-compliant policies (privacy policy, ToS, account deletion flow).
+2. **Robust user-account system** — real accounts, not the current name-based/localStorage identity. Leading candidate: a managed auth provider (Clerk/Auth0/Supabase Auth) rather than hand-rolling — same reasoning as Agon: password hashing, MFA, session handling, and social login essentially for free, and expensive to retrofit later. Existing Spotify OAuth likely becomes a linked account/source rather than the primary identity.
+3. **Prize-backed contests** — **decision made:** third-party gift cards, **house-funded** (Dre funds the prize, not pooled entry fees). This is the same safe lane Agon planned for its Phase 1 (a provider like Tremendous or Tango Card triggers the payout; the app never touches or custodies the prize value itself). House-funded (rather than entry-fee-funded) sidesteps the entry-fee/prize-pool legal complexity entirely — no money transmission, no "consideration" element, no need to build the harder skill-vs-chance defensibility case that a paid-entry cash pool would require.
+
+    **Worth flagging:** unlike Agon (skill-based challenges), Pandora Bingo's outcomes involve genuine chance (which song plays, mic detection timing, etc.). That's fine for house-funded, no-entry-fee prizes — but it's a reason to stay away from paid entry + cash payout for this app specifically, even further into the roadmap than Agon might. If entry fees are ever considered later, that needs its own legal consult before any code gets written, same gating pattern as Agon §7.
+
+### Known gaps to audit before/during rewrite
+Carried over from the current handoff notes — none of these are confirmed, just flagged:
+- **Git repo status** — not confirmed as of the July 2026 `~/projects/` reorganization. Needs to actually be set up/verified if it isn't already, especially before a rewrite branches off it.
+- **Database in actual use** — suite convention is SQLite-over-Postgres, but Railway deployments sometimes default to a managed Postgres instance. Needs a direct check of what's actually running in production before assuming. The rewrite (real accounts + prize records) likely wants Postgres regardless, per the same transactional-integrity reasoning used for Agon.
+- **Auth mechanism** — confirm whether current prod uses the shared `JWT_SECRET` pattern, Spotify OAuth session tokens exclusively, or both, before deciding what the new auth provider needs to replace or coexist with.
+- **No security audit on record** for this app specifically (past audits covered PTM, Lifestyle Design, Assemble) — worth doing once real accounts and prize payouts are in scope, given store review and basic user-trust requirements.
+
+### Open questions for the rewrite (to resolve before architecture decisions)
+1. Keep Socket.io real-time layer as-is, or does a mobile shell change that (e.g. React Native's networking/background constraints)?
+2. Does Spotify OAuth remain required, or does the rewrite lean harder on the AudD/mic-detection path (which is platform-agnostic) as primary, with Spotify as an optional enhancement?
+3. Gift card provider choice — Tremendous vs. Tango Card vs. other; which has the smoother API/store-compliance story?
+4. What triggers a gift-card prize — win a specific contest mode, leaderboard placement, some frequency/cooldown to control cost as a house-funded system? Needs a cost-control design, not just a mechanic.
+5. Does the existing name-based leaderboard/stats system migrate to the new account system, or reset clean at launch?
+6. Repo/versioning convention going forward — does this project adopt Agon's git-patch delivery workflow, or keep the current "full replacement files for complex components" habit?
+
+---
+
 ## How to Play
 
 1. Host creates a room, names their playlist, selects a game mode, and shares the room code
@@ -51,11 +116,11 @@ Create a file at `server/.env`:
 ```
 SPOTIFY_CLIENT_ID=your_client_id
 SPOTIFY_CLIENT_SECRET=your_client_secret
-SPOTIFY_REDIRECT_URI=http://127.0.0.1:3002/auth/spotify/callback
+SPOTIFY_REDIRECT_URI=http://127.0.0.1:3009/auth/spotify/callback
 SPOTIFY_ENABLED=true
 AUDD_API_KEY=your_audd_key
 STATS_DB_PATH=./stats.db
-PORT=3002
+PORT=3009
 ```
 
 - `SPOTIFY_ENABLED` — set to `false` to hide the Spotify source option from all users (useful when Spotify dev mode limits who can auth)
@@ -71,7 +136,7 @@ PORT=3002
 bash start.sh
 ```
 
-- Backend runs on port 3002
+- Backend runs on port 3009
 - Frontend runs on port 5174 (Vite dev server)
 - Access from other devices via Tailscale: `http://100.70.143.100:5174/`
 
@@ -82,7 +147,7 @@ Press Ctrl+C to stop both servers.
 ```bash
 npm run install:all   # first time only
 npm run build         # builds React app into client/dist
-npm start             # serves everything from port 3002
+npm start             # serves everything from port 3009
 ```
 
 ## Deployment
@@ -130,7 +195,7 @@ Previously deployed on Replit. Railway replaced it due to sleep timeouts. See [R
 - Derives the Spotify OAuth redirect URI dynamically from the request host
 - Sets CORS to same-origin (no separate frontend port in production)
 
-Local dev is unchanged — `bash start.sh` runs Vite on 5174 with a proxy to 3002.
+Local dev is unchanged — `bash start.sh` runs Vite on 5174 with a proxy to 3009.
 
 ---
 
@@ -328,7 +393,7 @@ Host authenticates via Spotify OAuth before creating a room:
 
 Token auto-refreshes before expiry (1-hour lifetime). Redirect URI derived dynamically from request host — works on any deployment without code changes.
 
-- **Local:** `http://127.0.0.1:3002/auth/spotify/callback`
+- **Local:** `http://127.0.0.1:3009/auth/spotify/callback`
 - **Railway:** `https://pandora-bingo.up.railway.app/auth/spotify/callback`
 
 Host setup state saved to sessionStorage before OAuth redirect and restored on return.
@@ -480,6 +545,8 @@ pandora-bingo/
   archive.sh                Snapshot project to ~/pandora-bingo-milestones/<name>/
   .gitignore                Excludes .env, node_modules, client/dist, caches, stats.db
   README_pandora-bingo.md   This file
+  DEV_PLAN_pandora-bingo.md Active Beta-Readiness Sprint plan — session breakdown,
+                            acceptance criteria, open decisions, delivery log
   REPLIT.md                 Archived Replit deployment guide
 ```
 
@@ -512,7 +579,9 @@ pandora-bingo/
 
 ### Upcoming
 
-- **⚠️ Test the v12.1 PWA release on real devices** — not yet verified: Android install flow, iOS Add to Home Screen, standalone launch, background reminder notification, Wake Lock behavior (see checklist in the Progressive Web App section above)
+**Note:** the items below are being superseded in priority order by the active Beta-Readiness Sprint (see top of this file and `DEV_PLAN_pandora-bingo.md`) through the December 2026 beta target. This list remains the backlog for everything not already folded into that sprint.
+
+- **⚠️ Test the v12.1 PWA release on real devices** — not yet verified: Android install flow, iOS Add to Home Screen, standalone launch, background reminder notification, Wake Lock behavior (see checklist in the Progressive Web App section above) — now tracked as Sprint Session 6
 - Build StatsScreen UI — sortable artist/song stats table accessible from host tab
 - Hook stat recording into game events (pick submission, song played, artist matched)
 - Manual fallback grid should show only artists players actually picked, not full pool
@@ -524,4 +593,13 @@ pandora-bingo/
 - Mobile UI refinements
 - Spotify playback control (play/pause/skip from within the game)
 - Recurring background reminder via Web Push (VAPID keys + subscription storage) if the single on-background notification isn't enough in practice
-- Scope Capacitor native wrapper if true background mic capture or App Store presence becomes a goal
+
+### Rewrite Track (see "Planned Rewrite" section above for full context)
+
+- [ ] Audit: confirm git repo status, actual prod database (SQLite vs. Railway Postgres), current auth mechanism
+- [ ] Security audit (none on record for this app specifically)
+- [ ] Choose and integrate managed auth provider (Clerk/Auth0/Supabase) for real user accounts
+- [ ] Decide React Native/Expo shell vs. continued PWA-only for store distribution
+- [ ] Choose gift-card provider (Tremendous vs. Tango Card) and design house-funded prize trigger + cost controls
+- [ ] Draft privacy policy, ToS, account deletion flow (store requirements)
+- [ ] Resolve open questions listed in "Planned Rewrite" section before committing to architecture

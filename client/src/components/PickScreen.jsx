@@ -50,16 +50,41 @@ function useSearch(roomCode, musicSource) {
   return { query, handleQueryChange, results, searching, searchError, setResults, setQuery, isSearchable };
 }
 
+// ─── Toggle switch ────────────────────────────────────────────────────────────
+
+function ToggleSwitch({ checked, onChange, accentColor = '#6366f1' }) {
+  return (
+    <div
+      role="switch"
+      aria-checked={checked}
+      onClick={() => onChange(!checked)}
+      style={{
+        width: 44, height: 24, borderRadius: 12, cursor: 'pointer', flexShrink: 0,
+        background: checked ? accentColor : '#334155',
+        border: `1px solid ${checked ? accentColor : '#475569'}`,
+        position: 'relative', transition: 'background 0.15s, border-color 0.15s',
+      }}
+    >
+      <div style={{
+        position: 'absolute', top: 2, left: checked ? 22 : 2,
+        width: 18, height: 18, borderRadius: '50%', background: '#fff',
+        transition: 'left 0.15s', boxShadow: '0 1px 3px rgba(0,0,0,0.4)',
+      }} />
+    </div>
+  );
+}
+
 // ─── Shared search input + results ───────────────────────────────────────────
 
 function SearchPicker({ roomCode, musicSource, pool, selected, onToggle, limit, accentColor = '#6366f1', accentBg = '#312e81', disabledKeys = new Set() }) {
   const { query, handleQueryChange, results, searching, searchError, setResults, setQuery, isSearchable } = useSearch(roomCode, musicSource);
+  const [showSuggested, setShowSuggested] = useState(false);
   // Always artist mode
   const getKey = (item) => item.id || item.name;
   const getLabel = (item) => item.name;
   const isSelected = (item) => selected.some(s => getKey(s) === getKey(item));
   const showResults = isSearchable && query.trim().length > 0;
-  const displayList = showResults ? results : pool;
+  const displayList = showResults ? results : (showSuggested ? pool : []);
 
   const searchHint = `Search by artist name or song title to find the artist`;
   const searchPlaceholder = 'Search artists or songs…';
@@ -70,9 +95,12 @@ function SearchPicker({ roomCode, musicSource, pool, selected, onToggle, limit, 
     searchIcon: { position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)', fontSize: 15, color: '#64748b', pointerEvents: 'none' },
     clearBtn: { position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', fontSize: 16, padding: '0 2px', lineHeight: 1 },
     hint: { fontSize: 12, color: '#475569', marginBottom: 10, textAlign: 'center' },
+    toggleRow: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '6px 2px', marginBottom: 10 },
+    toggleLabel: { fontSize: 13, color: '#94a3b8', fontWeight: 600 },
     searching: { fontSize: 12, color: '#64748b', textAlign: 'center', padding: '12px 0' },
     error: { fontSize: 12, color: '#f87171', textAlign: 'center', padding: '8px 0' },
-    grid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 8, marginBottom: 16, maxHeight: 420, overflowY: 'auto' },
+    scrollPane: { maxHeight: 280, overflowY: 'auto', marginBottom: 16, paddingRight: 2 },
+    grid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 8 },
     item: (sel, disabled) => ({
       padding: '10px 12px', borderRadius: 8, cursor: disabled ? 'not-allowed' : 'pointer',
       background: sel ? accentBg : (disabled ? '#111827' : '#1e293b'),
@@ -102,31 +130,39 @@ function SearchPicker({ roomCode, musicSource, pool, selected, onToggle, limit, 
           {query && <button style={s.clearBtn} onClick={() => { setQuery(''); setResults([]); }}>✕</button>}
         </div>
       )}
-      {!isSearchable && <div style={s.hint}>Pick from the suggested artists below</div>}
       {isSearchable && !query && <div style={s.hint}>{searchHint}</div>}
+
+      {!showResults && (
+        <div style={s.toggleRow}>
+          <span style={s.toggleLabel}>Show suggested artists</span>
+          <ToggleSwitch checked={showSuggested} onChange={setShowSuggested} accentColor={accentColor} />
+        </div>
+      )}
 
       {searching && <div style={s.searching}>Searching...</div>}
       {searchError && <div style={s.error}>{searchError}</div>}
 
-      {!searching && (
-        <div style={s.grid}>
-          {displayList.length === 0 && query && !searching
-            ? <div style={s.noResults}>No results for "{query}"</div>
-            : displayList.map((item, i) => {
-                const key = getKey(item);
-                const sel = isSelected(item);
-                const disabled = disabledKeys.has(key) && !sel;
-                const thumb = item.albumArt || item.image || null;
-                return (
-                  <div key={item.id || i} style={s.item(sel, disabled)} onClick={() => !disabled && onToggle(item)}>
-                    {thumb && <img src={thumb} style={s.thumb} alt="" />}
-                    <div style={s.textWrap}>
-                      <div style={s.itemTitle(sel)}>{sel ? '✓ ' : ''}{getLabel(item)}</div>
+      {!searching && (showResults || showSuggested) && (
+        <div style={s.scrollPane}>
+          <div style={s.grid}>
+            {displayList.length === 0 && query
+              ? <div style={s.noResults}>No results for "{query}"</div>
+              : displayList.map((item, i) => {
+                  const key = getKey(item);
+                  const sel = isSelected(item);
+                  const disabled = disabledKeys.has(key) && !sel;
+                  const thumb = item.albumArt || item.image || null;
+                  return (
+                    <div key={item.id || i} style={s.item(sel, disabled)} onClick={() => !disabled && onToggle(item)}>
+                      {thumb && <img src={thumb} style={s.thumb} alt="" />}
+                      <div style={s.textWrap}>
+                        <div style={s.itemTitle(sel)}>{sel ? '✓ ' : ''}{getLabel(item)}</div>
+                      </div>
                     </div>
-                  </div>
-                );
-              })
-          }
+                  );
+                })
+            }
+          </div>
         </div>
       )}
     </div>
@@ -177,7 +213,7 @@ function ProgressDots({ count, limit, color }) {
 
 // ─── Standard ────────────────────────────────────────────────────────────────
 
-function StandardPickScreen({ room }) {
+function StandardPickScreen({ room, isHost, unconfirmedCount }) {
   const [picks, setPicks] = useState([]);
   // Always artist mode — song mode retired
   const pool = room.artistPool || [];
@@ -199,7 +235,7 @@ function StandardPickScreen({ room }) {
     socket.emit('player:picks', { picks });
   };
 
-  const s = sharedStyles();
+  const s = sharedStyles(isHost ? 220 : 100);
 
   return (
     <div style={s.wrap}>
@@ -220,16 +256,18 @@ function StandardPickScreen({ room }) {
         accentBg="#312e81"
       />
 
-      <button style={s.btn(picks.length === LIMIT, '#6366f1')} onClick={confirm} disabled={picks.length < LIMIT}>
-        {picks.length === LIMIT ? 'Confirm picks' : `Select ${LIMIT - picks.length} more`}
-      </button>
+      <PickFooter isHost={isHost} unconfirmedCount={unconfirmedCount}>
+        <button style={s.btn(picks.length === LIMIT, '#6366f1')} onClick={confirm} disabled={picks.length < LIMIT}>
+          {picks.length === LIMIT ? 'Confirm picks' : `Select ${LIMIT - picks.length} more`}
+        </button>
+      </PickFooter>
     </div>
   );
 }
 
 // ─── Newlywed ─────────────────────────────────────────────────────────────────
 
-function NewlywedPickScreen({ room }) {
+function NewlywedPickScreen({ room, isHost, unconfirmedCount }) {
   const [phase, setPhase] = useState('mains');
   const [mains, setMains] = useState([]);
   const [backups, setBackups] = useState([]);
@@ -270,7 +308,7 @@ function NewlywedPickScreen({ room }) {
   };
   const cfg = phases[phase];
   const { toggle, disabledKeys } = makePhasePicker(cfg.selected, cfg.setSelected, cfg.limit);
-  const s = sharedStyles();
+  const s = sharedStyles(isHost ? 220 : 100);
 
   const handleNext = () => {
     if (cfg.nextPhase) {
@@ -335,20 +373,22 @@ function NewlywedPickScreen({ room }) {
         disabledKeys={disabledKeys}
       />
 
-      <button
-        style={s.btn(cfg.selected.length === cfg.limit, cfg.color)}
-        onClick={handleNext}
-        disabled={cfg.selected.length < cfg.limit}
-      >
-        {cfg.selected.length === cfg.limit ? cfg.nextLabel : `Select ${cfg.limit - cfg.selected.length} more`}
-      </button>
+      <PickFooter isHost={isHost} unconfirmedCount={unconfirmedCount}>
+        <button
+          style={s.btn(cfg.selected.length === cfg.limit, cfg.color)}
+          onClick={handleNext}
+          disabled={cfg.selected.length < cfg.limit}
+        >
+          {cfg.selected.length === cfg.limit ? cfg.nextLabel : `Select ${cfg.limit - cfg.selected.length} more`}
+        </button>
+      </PickFooter>
     </div>
   );
 }
 
 // ─── Gong Show ────────────────────────────────────────────────────────────────
 
-function GongShowPickScreen({ room }) {
+function GongShowPickScreen({ room, isHost, unconfirmedCount }) {
   const [phase, setPhase] = useState('mains');
   const [mains, setMains] = useState([]);
   const [gongs, setGongs] = useState([]);
@@ -374,7 +414,7 @@ function GongShowPickScreen({ room }) {
   };
 
   const confirm = () => socket.emit('player:gongshow_picks', { mains, gongs });
-  const s = sharedStyles();
+  const s = sharedStyles(isHost ? 220 : 100);
   const isMains = phase === 'mains';
   const accentColor = isMains ? '#6366f1' : '#ef4444';
   const accentBg = isMains ? '#312e81' : '#1f0a0a';
@@ -434,25 +474,27 @@ function GongShowPickScreen({ room }) {
         disabledKeys={disabledKeys}
       />
 
-      {phase === 'mains' && mains.length === 10 && (
-        <button style={{ ...s.btn(true, '#6366f1'), marginBottom: 8 }} onClick={() => setPhase('gongs')}>
-          Next: Pick gong artists →
-        </button>
-      )}
-      {phase === 'gongs' && (
-        <button style={s.btn(readyToConfirm, '#ef4444')} onClick={confirm} disabled={!readyToConfirm}>
-          {readyToConfirm ? 'Confirm all picks' : `Select ${5 - gongs.length} more gong${5 - gongs.length !== 1 ? 's' : ''}`}
-        </button>
-      )}
+      <PickFooter isHost={isHost} unconfirmedCount={unconfirmedCount}>
+        {phase === 'mains' && mains.length === 10 && (
+          <button style={s.btn(true, '#6366f1')} onClick={() => setPhase('gongs')}>
+            Next: Pick gong artists →
+          </button>
+        )}
+        {phase === 'gongs' && (
+          <button style={s.btn(readyToConfirm, '#ef4444')} onClick={confirm} disabled={!readyToConfirm}>
+            {readyToConfirm ? 'Confirm all picks' : `Select ${5 - gongs.length} more gong${5 - gongs.length !== 1 ? 's' : ''}`}
+          </button>
+        )}
+      </PickFooter>
     </div>
   );
 }
 
 // ─── Shared styles ────────────────────────────────────────────────────────────
 
-function sharedStyles() {
+function sharedStyles(footerClearance = 100) {
   return {
-    wrap: { maxWidth: 700, margin: '0 auto', padding: 16, paddingTop: 20 },
+    wrap: { maxWidth: 700, margin: '0 auto', padding: 16, paddingTop: 20, paddingBottom: `calc(${footerClearance}px + env(safe-area-inset-bottom))` },
     title: { fontSize: 22, fontWeight: 700, color: '#f1f5f9', marginBottom: 2 },
     sub: { fontSize: 13, color: '#64748b', marginBottom: 14 },
     btn: (ready, color) => ({
@@ -470,24 +512,45 @@ function sharedStyles() {
 
 // ─── Router ───────────────────────────────────────────────────────────────────
 
-// ─── Host force-start banner ──────────────────────────────────────────────────
-function HostForceStartBanner({ room }) {
-  const unconfirmedCount = (room.players || []).filter(p => !p.confirmed).length;
-  if (unconfirmedCount === 0) return null;
+// ─── Fixed bottom footer: primary action button + host force-start banner ────
+// Always pinned to the bottom of the viewport. The host's "Start game anyway"
+// banner (when present) stacks below the screen's own action button, so the
+// two never overlap — see fire-pit playtest bug where the banner covered the
+// Confirm picks button.
+function PickFooter({ isHost, unconfirmedCount = 0, children }) {
+  const showBanner = isHost && unconfirmedCount > 0;
+  const hasButton = React.Children.toArray(children).length > 0;
+  if (!hasButton && !showBanner) return null;
   return (
-    <div style={{ position:'fixed', bottom:20, left:'50%', transform:'translateX(-50%)', zIndex:200,
-      background:'#1a1a2e', border:'1px solid #ffb34788', borderRadius:12,
-      padding:'14px 20px', boxShadow:'0 0 20px rgba(255,179,71,0.3)', textAlign:'center', minWidth:280 }}>
-      <div style={{ fontSize:13, color:'#94a3b8', marginBottom:8 }}>
-        {unconfirmedCount} player{unconfirmedCount > 1 ? 's' : ''} still picking
+    <div style={{
+      position: 'fixed', left: 0, right: 0, bottom: 0, zIndex: 150,
+      background: 'linear-gradient(to top, #0b0f1a 55%, rgba(11,15,26,0))',
+      paddingTop: 28, pointerEvents: 'none',
+    }}>
+      <div style={{
+        maxWidth: 700, margin: '0 auto',
+        padding: '0 16px calc(14px + env(safe-area-inset-bottom))',
+        display: 'flex', flexDirection: 'column', gap: 10,
+        pointerEvents: 'auto',
+      }}>
+        {children}
+        {showBanner && (
+          <div style={{
+            background:'#1a1a2e', border:'1px solid #ffb34788', borderRadius:12,
+            padding:'12px 20px', boxShadow:'0 0 20px rgba(255,179,71,0.3)', textAlign:'center' }}>
+            <div style={{ fontSize:13, color:'#94a3b8', marginBottom:8 }}>
+              {unconfirmedCount} player{unconfirmedCount > 1 ? 's' : ''} still picking
+            </div>
+            <button
+              onClick={() => socket.emit('host:force_start')}
+              style={{ width: '100%', padding:'10px 24px', borderRadius:8, border:'1px solid #ffb347', cursor:'pointer',
+                background:'#2a1f0a', color:'#ffb347', fontWeight:700, fontSize:14,
+                fontFamily:"'Orbitron', monospace", letterSpacing:'0.05em' }}>
+              ▶ Start game anyway
+            </button>
+          </div>
+        )}
       </div>
-      <button
-        onClick={() => socket.emit('host:force_start')}
-        style={{ padding:'10px 24px', borderRadius:8, border:'1px solid #ffb347', cursor:'pointer',
-          background:'#2a1f0a', color:'#ffb347', fontWeight:700, fontSize:14,
-          fontFamily:"'Orbitron', monospace", letterSpacing:'0.05em' }}>
-        ▶ Start game anyway
-      </button>
     </div>
   );
 }
@@ -514,21 +577,21 @@ function GraceOverlay({ seconds }) {
 
 export default function PickScreen({ room, playerId, isHost, graceSecondsLeft }) {
   if (!room) return null;
+  const unconfirmedCount = isHost ? (room.players || []).filter(p => !p.confirmed).length : 0;
   return (
     <>
       {graceSecondsLeft && <GraceOverlay seconds={graceSecondsLeft} />}
-      {isHost && <HostForceStartBanner room={room} />}
-      {room.gameMode === 'newlywed' && <NewlywedPickScreen room={room} playerId={playerId} />}
-      {room.gameMode === 'gongshow' && <GongShowPickScreen room={room} playerId={playerId} />}
-      {room.gameMode === 'djbattle' && <DJBattlePickScreen room={room} playerId={playerId} isHost={isHost} />}
-      {room.gameMode !== 'newlywed' && room.gameMode !== 'gongshow' && room.gameMode !== 'djbattle' && <StandardPickScreen room={room} playerId={playerId} />}
+      {room.gameMode === 'newlywed' && <NewlywedPickScreen room={room} playerId={playerId} isHost={isHost} unconfirmedCount={unconfirmedCount} />}
+      {room.gameMode === 'gongshow' && <GongShowPickScreen room={room} playerId={playerId} isHost={isHost} unconfirmedCount={unconfirmedCount} />}
+      {room.gameMode === 'djbattle' && <DJBattlePickScreen room={room} playerId={playerId} isHost={isHost} unconfirmedCount={unconfirmedCount} />}
+      {room.gameMode !== 'newlywed' && room.gameMode !== 'gongshow' && room.gameMode !== 'djbattle' && <StandardPickScreen room={room} playerId={playerId} isHost={isHost} unconfirmedCount={unconfirmedCount} />}
     </>
   );
 }
 
 // ─── DJ Battle ────────────────────────────────────────────────────────────────
 
-function DJBattlePickScreen({ room, playerId, isHost }) {
+function DJBattlePickScreen({ room, playerId, isHost, unconfirmedCount }) {
   const [picks, setPicks] = useState([]);
   // DJ Battle is always artist mode
   const pool = room.artistPool || [];
@@ -550,7 +613,7 @@ function DJBattlePickScreen({ room, playerId, isHost }) {
     socket.emit('player:picks', { picks });
   };
 
-  const s = sharedStyles();
+  const s = sharedStyles(isHost ? 220 : 100);
   const purple = '#a855f7';
   const purpleBg = '#2e1065';
 
@@ -570,6 +633,7 @@ function DJBattlePickScreen({ room, playerId, isHost }) {
         <div style={{ padding: '12px 14px', borderRadius: 8, background: '#0f172a', border: '1px solid #334155', color: '#64748b', fontSize: 13 }}>
           Waiting for players to confirm their picks…
         </div>
+        <PickFooter isHost={isHost} unconfirmedCount={unconfirmedCount} />
       </div>
     );
   }
@@ -602,9 +666,11 @@ function DJBattlePickScreen({ room, playerId, isHost }) {
         accentBg={purpleBg}
       />
 
-      <button style={s.btn(picks.length === LIMIT, purple)} onClick={confirm} disabled={picks.length < LIMIT}>
-        {picks.length === LIMIT ? 'Lock in picks' : `Pick ${LIMIT - picks.length} more artist${LIMIT - picks.length !== 1 ? 's' : ''}`}
-      </button>
+      <PickFooter isHost={isHost} unconfirmedCount={unconfirmedCount}>
+        <button style={s.btn(picks.length === LIMIT, purple)} onClick={confirm} disabled={picks.length < LIMIT}>
+          {picks.length === LIMIT ? 'Lock in picks' : `Pick ${LIMIT - picks.length} more artist${LIMIT - picks.length !== 1 ? 's' : ''}`}
+        </button>
+      </PickFooter>
     </div>
   );
 }

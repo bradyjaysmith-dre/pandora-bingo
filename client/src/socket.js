@@ -1,6 +1,6 @@
 import { io } from 'socket.io-client';
 
-// In development, Vite's proxy forwards /socket.io to localhost:3002.
+// In development, Vite's proxy forwards /socket.io to localhost:3009.
 // In production (Railway/Replit), the server and client are on the same origin,
 // so connecting to '/' works automatically.
 //
