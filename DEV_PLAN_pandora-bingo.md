@@ -62,7 +62,7 @@ First real-world outdoor multiplayer test. Spotify connection failed; mic detect
 
 ---
 
-### Session 3 — Playlist mental model: quick fix + selection summary 🔲
+### Session 3 — Playlist mental model: quick fix + selection summary ✅ (code complete, verified via scripted test + build; on-device confirmation pending)
 **Tasks:**
 - Add explicit copy on `PickScreen.jsx` / `GameScreen.jsx` for all existing modes clarifying that picks are predictions and don't influence what plays
 - Build a host-facing "Selection Summary" panel: after the pick phase closes, aggregate every artist picked across all players and display it to the host (foundation for Session 4, useful standalone even without it)
@@ -230,3 +230,20 @@ Dre tested Session 2 against the live Railway deploy (iOS Safari hosting, Androi
 - PWA-standalone mode (Add to Home Screen) — not retested since the Session 1 layout changes
 
 **Next:** Session 3 (Playlist mental model / Selection Summary) is next per the plan. The Android Chrome scaling issue stays parked under Session 6 until Dre wants to dig into it.
+
+### 2026-09-21 — Session 3: Playlist mental model + Selection Summary
+
+**Shipped:**
+- **"Predictions only" copy.** Added a one-line note — *"Predictions only — your picks don't control what plays"* — under the subtitle on all four pick screens (`client/src/components/PickScreen.jsx`: Standard, Newlywed, Gong Show, DJ Battle player view) and once more during play in `GameScreen.jsx` (below the mode-badge row, visible to all players). Deliberately **not** added to DJ Battle's host view — the host actually did choose the real playlist, so the note doesn't apply to them.
+- **Host-facing Selection Summary.** New "Picks" tab in `GameScreen.jsx`'s existing tab bar (alongside My card / Scores / Host controls), host-only. Aggregates every player's `picks` array (the primary-pick field in every game mode — `submitPicks`/`submitNewlywedPicks`/`submitGongShowPicks` in `server/game.js` all write into it) into a sorted "artist · picked by N players" list, computed inline client-side from `room` state already being broadcast — no server or protocol changes needed.
+- `npm run build` (client) verified green.
+
+**Verified:**
+- Scripted socket.io-client test (2 players, overlapping picks: both pick "Alpha" and "Bravo", plus 3 unique picks each) against the real dev server confirmed the aggregation produces the exact expected ranking (Alpha:2, Bravo:2, then the six unique picks at 1 each).
+- Confirmed all new copy strings and the "Picks" tab label are present in the production build output (`client/dist/assets/*.js`).
+
+**Not yet done — needs Dre's on-device pass:** none of this session's UI has been tapped on a real device yet (copy placement, tab layout, chip wrapping on a narrow phone screen). Same "code shipped, on-device unconfirmed" status as the rest of Sessions 1 & 2's newer pieces.
+
+**Explicitly out of scope (per the plan):** Session 4's playlist-prompt string generator — this session only built the aggregation and display that Session 4 will read from.
+
+**Resuming after a break:** uncommitted in the working tree as of this entry. Session 4 (player-influenced playlist mode MVP) is next once Session 3 is committed/pushed and — per Dre's standing instruction — accepted regardless of on-device testing status, with testing gaps flagged rather than blocking.

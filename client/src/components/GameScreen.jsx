@@ -975,6 +975,10 @@ export default function GameScreen({ room, playerId, isHost, spotifyTokens, nowP
         {isGongShow && room.blindMode && <span style={s.badge('rgba(196,181,253,0.12)',GC.indigo,'rgba(129,140,248,0.3)')}>🙈 Blind</span>}
       </div>
 
+      <div style={{ fontSize:11, color:GC.muted, fontStyle:'italic', marginBottom:12 }}>
+        Predictions only — picks don't control what plays.
+      </div>
+
       {nowPlaying && (
         <div style={s.nowPlaying}>
           {nowPlaying.albumArt && <img src={nowPlaying.albumArt} style={s.albumArt} alt="album art" />}
@@ -994,6 +998,7 @@ export default function GameScreen({ room, playerId, isHost, spotifyTokens, nowP
       <div style={s.tabs}>
         <button style={s.tab(tab==='card')} onClick={() => setTab('card')}>My card</button>
         <button style={s.tab(tab==='scores')} onClick={() => setTab('scores')}>Scores</button>
+        {isHost && <button style={s.tab(tab==='summary')} onClick={() => setTab('summary')}>Picks</button>}
         {isHost && <button style={s.tab(tab==='host')} onClick={() => setTab('host')}>{isSpotifyMode ? 'Host (Spotify)' : isAuddMode ? 'Host (Mic)' : isDJBattle ? 'Host (DJ)' : 'Host controls'}</button>}
       </div>
 
@@ -1034,6 +1039,34 @@ export default function GameScreen({ room, playerId, isHost, spotifyTokens, nowP
           })}
         </div>
       )}
+
+      {tab === 'summary' && isHost && (() => {
+        const pickCounts = new Map();
+        room.players.forEach(p => (p.picks || []).forEach(pick => {
+          const key = pick.id || pick.name;
+          const entry = pickCounts.get(key) || { name: pick.name, count: 0 };
+          entry.count += 1;
+          pickCounts.set(key, entry);
+        }));
+        const sortedPicks = [...pickCounts.values()].sort((a, b) => b.count - a.count);
+        const confirmedCount = room.players.filter(p => p.confirmed).length;
+        return (
+          <div>
+            <div style={{ fontSize:13, color:GC.muted, marginBottom:12 }}>
+              {sortedPicks.length} artist{sortedPicks.length === 1 ? '' : 's'} picked across {confirmedCount} player{confirmedCount === 1 ? '' : 's'}
+            </div>
+            {sortedPicks.length === 0 ? (
+              <div style={{ fontSize:13, color:GC.muted }}>No picks submitted.</div>
+            ) : (
+              <div style={s.playedList}>
+                {sortedPicks.map(({ name, count }) => (
+                  <span key={name} style={s.playedChip}>{name} · {count} player{count === 1 ? '' : 's'}</span>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {tab === 'host' && isHost && (
         <div>

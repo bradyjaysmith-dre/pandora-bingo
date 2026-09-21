@@ -241,6 +241,7 @@ function StandardPickScreen({ room, isHost, unconfirmedCount }) {
     <div style={s.wrap}>
       <div style={s.title}>Pick your {LIMIT} artists</div>
       <div style={s.sub}>{room.playlistName ? `Playlist: ${room.playlistName}` : 'Artist mode'}</div>
+      <div style={s.predictionNote}>Predictions only — your picks don't control what plays.</div>
 
       <ProgressDots count={picks.length} limit={LIMIT} color="#6366f1" />
       <SelectedChips picks={picks} onRemove={(item) => toggle(item)} accentColor="#6366f1" limit={LIMIT} />
@@ -324,6 +325,7 @@ function NewlywedPickScreen({ room, isHost, unconfirmedCount }) {
     <div style={s.wrap}>
       <div style={s.title}>Newlywed Bingo — Artist mode</div>
       <div style={s.sub}>{room.playlistName ? `Playlist: ${room.playlistName}` : 'Artist mode'}</div>
+      <div style={s.predictionNote}>Predictions only — your picks don't control what plays.</div>
 
       {/* Step bar */}
       <div style={{ display: 'flex', gap: 6, marginBottom: 14 }}>
@@ -428,6 +430,7 @@ function GongShowPickScreen({ room, isHost, unconfirmedCount }) {
     <div style={s.wrap}>
       <div style={s.title}>Gong Show Bingo — Artist mode</div>
       <div style={s.sub}>{room.playlistName ? `Playlist: ${room.playlistName}` : 'Artist mode'}</div>
+      <div style={s.predictionNote}>Predictions only — your picks don't control what plays.</div>
 
       {/* Phase tabs */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
@@ -496,7 +499,8 @@ function sharedStyles(footerClearance = 100) {
   return {
     wrap: { maxWidth: 700, margin: '0 auto', padding: 16, paddingTop: 20, paddingBottom: `calc(${footerClearance}px + env(safe-area-inset-bottom))` },
     title: { fontSize: 22, fontWeight: 700, color: '#f1f5f9', marginBottom: 2 },
-    sub: { fontSize: 13, color: '#64748b', marginBottom: 14 },
+    sub: { fontSize: 13, color: '#64748b', marginBottom: 2 },
+    predictionNote: { fontSize: 11, color: '#475569', fontStyle: 'italic', marginBottom: 14 },
     btn: (ready, color) => ({
       width: '100%', padding: '12px 20px', borderRadius: 8, border: 'none',
       cursor: ready ? 'pointer' : 'not-allowed',
@@ -642,6 +646,7 @@ function DJBattlePickScreen({ room, playerId, isHost, unconfirmedCount }) {
     <div style={s.wrap}>
       <div style={s.title}>🎧 DJ Battle — Artist mode</div>
       <div style={s.sub}>Pick {LIMIT} artists you think the DJ will play.</div>
+      <div style={s.predictionNote}>Predictions only — your picks don't control what plays.</div>
 
       {/* Playlist info */}
       {(room.playlistName || room.playlistHint) && (
