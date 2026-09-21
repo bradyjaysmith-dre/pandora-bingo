@@ -33,7 +33,7 @@ First real-world outdoor multiplayer test. Spotify connection failed; mic detect
 
 ## Session plan
 
-### Session 1 — Mobile navigation & button rendering ✅ (code review done, on-device pass pending)
+### Session 1 — Mobile navigation & button rendering ✅ (on-device pass confirmed on Android)
 **Why first:** blocks reliable re-testing of everything else; this class of bug makes the app look broken before any real gameplay issue even comes up.
 
 **Tasks:**
@@ -167,3 +167,23 @@ _Claude Code: append a dated entry here after each session — what shipped, wha
 **Unrelated local-dev-only change made while setting up for the on-device test:** Pandora Bingo's local dev backend port was moved from **3002 → 3009** — port 3002 collides with GoalKeeper's server in the Coherence Suite port map, and Dre didn't want to interrupt GoalKeeper to free it. Changed: `server/index.js` (PORT fallback), `client/vite.config.js` (3 proxy targets), `server/.env` (local, gitignored, not in the diff), `README_pandora-bingo.md` (all local-port references). Frontend stays on 5174. **Does not affect Railway production** — Railway assigns its own `PORT` at deploy time regardless of the code fallback. If Spotify OAuth is ever tested locally, the redirect URI registered in the Spotify Developer Dashboard also needs updating to `http://127.0.0.1:3009/auth/spotify/callback` (external, not something Claude Code can do).
 
 **Resuming after a break:** nothing has been committed yet — all Session 1 changes (button/safe-area fixes + this port change) are uncommitted in the working tree, visible via `git status`/`git diff`. To resume on-device testing: `bash start.sh` from the repo root, then open `http://100.70.143.100:5174/` on a phone on the same Tailscale network. `bash start.sh stop` when done. Still need Dre's go-ahead on the diff before running `git add . && git commit && git push`.
+
+### 2026-09-21 — Session 1: on-device pass + pick-screen layout follow-ups
+
+**On-device test (Android Chrome, real hardware, via Tailscale):**
+- ✅ "Join Room" button no longer reads as disabled — cyan glow/border renders correctly
+- ✅ DJ Battle mode card no longer crashes Home
+- Found in the field: the host's "Start game anyway" force-start banner (only visible to hosts, shown while other players are still picking) floated as a `position:fixed` overlay directly on top of the Confirm picks button, with no reserved space — a real instance of the same "overlapping CTA" bug class as the original fire-pit report, just not caught by code review since it's host-only and state-dependent.
+
+**Fixed, then iterated further based on live feedback:**
+- Replaced the standalone force-start banner with a shared `PickFooter` component (`client/src/components/PickScreen.jsx`) — fixed to the bottom of the viewport, used by all four pick-screen variants (Standard, Newlywed, Gong Show, DJ Battle). The screen's own action button always renders first; the host banner (when present) stacks below it, so they can never overlap again.
+- Along the way, the artist-suggestion list was found to be its own nested `overflow-y:auto` box capped at 420px, separate from page scroll — confusing on mobile (two different scroll gestures needed to reach the Confirm button). Per Dre's direction: added a "Show suggested artists" toggle (`ToggleSwitch` component), **default off**, so the screen opens uncluttered; when enabled, results render in a smaller (280px) independently-scrolling pane. Search-as-you-type results always show regardless of toggle state.
+- The Room Code badge (`RoomCodeBadge.jsx`, shown globally via `App.jsx` whenever a room is active) was then found to crowd the new fixed footer at the bottom-left. Changed it from a static always-expanded badge to a collapsible one — starts as a small "🔑 ROOM" pill, tap to expand/collapse the full code. Applies everywhere the badge renders, not just the pick screen.
+- All changes verified live on the Android device across iterations, not just via `npm run build`.
+
+**Committed:** `8cfd832` — "Session 1: fix mobile button visibility, pick-screen layout, room badge clutter". 1 commit ahead of `origin/main`, **not pushed**.
+
+**Not yet done:**
+- iOS Safari has not been tested at all this session (only Android Chrome, real hardware) — the original acceptance criteria calls for both. Worth a pass before calling Session 1 fully closed across platforms.
+- Installed-PWA-standalone mode not retested with these latest changes (only normal browser-tab mode).
+- Session 1 is otherwise functionally complete and closed pending the iOS/PWA passes above. Session 2 (Room lifecycle & reconnection hardening) is next and unblocked.
