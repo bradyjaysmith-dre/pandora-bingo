@@ -10,6 +10,7 @@ const game = require('./game');
 const spotify = require('./spotify');
 const audd = require('./audd');
 const lb = require('./leaderboard');
+const feedback = require('./feedback');
 const { getDynamicPool } = require('./dynamic-songs');
 
 const app = express();
@@ -108,6 +109,29 @@ app.post('/api/audd/identify', async (req, res) => {
 
 app.get('/api/leaderboard', (req, res) => {
   res.json(lb.getLeaderboard());
+});
+
+// ── In-app bug reports ───────────────────────────────────────────────────────
+// No accounts in this app, so no auth on submission — anyone can send a
+// report. Kept deliberately simple per DEV_PLAN Session 6: a beta tester
+// hitting a bug needs a way to tell Dre without a group chat message.
+app.post('/api/feedback', (req, res) => {
+  const { message, playerName, roomCode, gameMode, phase, isHost, userAgent, url } = req.body || {};
+  if (!message || !message.trim()) return res.status(400).json({ error: 'Message is required' });
+  feedback.record({
+    message: message.trim().slice(0, 2000),
+    playerName, roomCode, gameMode, phase, isHost, userAgent, url,
+  });
+  res.json({ ok: true });
+});
+
+// Viewing reports is gated behind a shared-secret query param rather than a
+// real auth system (this app has none) — set FEEDBACK_ADMIN_KEY in Railway
+// to enable it; unset (default), the route 404s as if it doesn't exist.
+app.get('/api/feedback', (req, res) => {
+  const adminKey = process.env.FEEDBACK_ADMIN_KEY;
+  if (!adminKey || req.query.key !== adminKey) return res.status(404).end();
+  res.json(feedback.getAll());
 });
 
 app.get('/api/songs/:genre', (req, res) => {

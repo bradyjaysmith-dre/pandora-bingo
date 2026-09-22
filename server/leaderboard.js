@@ -2,13 +2,15 @@
  * leaderboard.js — persistent player stats for Pandora Bingo
  *
  * No passwords — name matching only (case-insensitive).
- * Data is persisted to leaderboard.json in the server directory.
+ * Data is persisted to leaderboard.json on the Railway volume (falls back
+ * to the server directory in local dev, where no volume is mounted).
  */
 
 const fs = require('fs');
-const path = require('path');
+const { dataPath, migrateIfNeeded } = require('./dataDir');
 
-const LB_FILE = path.join(__dirname, 'leaderboard.json');
+const LB_FILE = dataPath('leaderboard.json');
+migrateIfNeeded('leaderboard.json');
 
 function load() {
   try {

@@ -6,6 +6,7 @@ server/.env
 
 # Auto-generated runtime data
 server/leaderboard.json
+server/feedback.json
 server/song-cache.json
 client/server/.env
 

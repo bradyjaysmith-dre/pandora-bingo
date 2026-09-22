@@ -99,7 +99,7 @@ See feature spec below. Manual/copy-paste only for v1 — no new external API in
 
 ---
 
-### Session 6 — Beta readiness pass 🔲
+### Session 6 — Beta readiness pass 🔶 (feedback mechanism + leaderboard persistence fix done; PWA checklist, cross-browser pass, and Android scaling bug are on-device work, still open)
 **Tasks:**
 - Close out the pending v12.1 PWA on-device testing checklist: Android install flow, iOS Add to Home Screen, standalone launch, background reminder notification, Wake Lock behavior
 - Cross-browser pass specifically targeting the button/safe-area bug class from Session 1, since it varies by device
@@ -283,3 +283,28 @@ Dre tested Session 2 against the live Railway deploy (iOS Safari hosting, Androi
 **Not yet done — needs Dre's on-device pass:** none of this session's UI has been tapped on a real device (the `<details>` collapse interaction in particular is worth checking on mobile Safari/Chrome, since native `<details>` styling can vary across browsers).
 
 **Next:** Session 6 (Beta readiness pass) is next per the plan, which already carries the Android Chrome scaling bug flagged 2026-09-21. The "How to Play" video/GIF remains an open item under Session 5 itself, blocked on content from Dre — not moved to Session 6.
+
+### 2026-09-21 — Session 6: feedback mechanism + leaderboard persistence fix
+
+**Scope decisions made with Dre before starting:** most of Session 6's original task list (PWA install checklist, cross-browser button/safe-area pass, the Android Chrome scaling investigation) is on-device work that can't be done from this environment — scoped this pass down to the one real code task, the in-app feedback mechanism, plus a code-level fix Dre approved along the way.
+
+**Discovered and fixed (not originally in scope, approved before starting):** Railway has a persistent volume mounted at `/data` (env var `RAILWAY_VOLUME_MOUNT_PATH`) and an unused `STATS_DB_PATH` env var already configured, but `leaderboard.json` was being written to the server's own directory — the container's ephemeral filesystem, wiped on every redeploy. Given we'd redeployed 5 times in one day during Sessions 2-5, this was a real, live data-loss bug, not a hypothetical. Fixed via a new shared `server/dataDir.js` (resolves to `RAILWAY_VOLUME_MOUNT_PATH` when present, falls back to the server directory for local dev where no volume exists) with a one-time migration that copies any existing `leaderboard.json` from the old ephemeral location the first time it runs against the volume. Verified the migration logic against a simulated volume path — copied correctly, byte-for-byte, without touching the source file.
+
+**Shipped — in-app feedback mechanism:**
+- New `server/feedback.js` (same load/save JSON pattern as `leaderboard.js`, also volume-aware via `dataDir.js`) plus two routes in `server/index.js`: `POST /api/feedback` (no auth — this app has none — validates a non-empty message, caps it at 2000 chars, auto-attaches room code/game mode/phase/host flag/user agent/URL from the request body) and a gated `GET /api/feedback` (returns 404 unless a `FEEDBACK_ADMIN_KEY` env var is set on Railway and matches a `?key=` query param — Dre needs to set that env var on Railway if he wants to use this; unset by default, so the route is invisible/inert until he opts in).
+- New `client/src/components/FeedbackModal.jsx` and a persistent "🐛" button in `App.jsx`, visible on every screen (including Home, unlike the Leave button which is room-only) — a bug can happen anywhere, and testers won't be next to the host to narrate it live.
+- Added `server/feedback.json` to `.gitignore` (same as the pre-existing `leaderboard.json`/`song-cache.json` runtime-data pattern).
+- `npm run build` verified green.
+
+**Verified (local dev server, scripted + curl):**
+- `POST /api/feedback` with a full payload persists correctly with all attached context; empty/whitespace-only message correctly rejected with 400.
+- `GET /api/feedback` returns 404 with no key, 404 with a wrong key (when `FEEDBACK_ADMIN_KEY` is unset entirely — the default/current Railway state), and returns the persisted report correctly when `FEEDBACK_ADMIN_KEY` is set and the matching key is supplied.
+- Confirmed "🐛 Report a bug" and the success-state copy are present in the production build output.
+
+**Not yet done — needs Dre's on-device pass, and stays flagged rather than blocking:**
+- PWA on-device testing checklist (Android install, iOS Add to Home Screen, standalone launch, background reminder notification, Wake Lock)
+- Cross-browser pass targeting the Session 1 button/safe-area bug class
+- Android Chrome scaling bug investigation (flagged 2026-09-21, still unresolved)
+- "How to Play" video/GIF (Session 5, blocked on content)
+
+**Next:** once Dre completes the on-device items above (or decides to defer them further), Sessions 1-6 will all be through their initial build pass. No Session 7 is defined yet in this plan.

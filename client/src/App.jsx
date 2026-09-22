@@ -8,6 +8,7 @@ import EndScreen from './components/EndScreen.jsx';
 import SpotifyCallback from './components/SpotifyCallback.jsx';
 import RoomCodeBadge from './components/RoomCodeBadge.jsx';
 import LeaderboardScreen from './components/LeaderboardScreen.jsx';
+import FeedbackModal from './components/FeedbackModal.jsx';
 
 const SESSION_KEY = 'pandora_session';
 
@@ -35,6 +36,7 @@ export default function App() {
   const [nowPlaying, setNowPlaying] = useState(null);
   const [graceSecondsLeft, setGraceSecondsLeft] = useState(null);
   const [leaveModal, setLeaveModal] = useState(false); // shown when back pressed in-game
+  const [feedbackModal, setFeedbackModal] = useState(false);
 
   const isSpotifyCallback = window.location.pathname === '/spotify-callback';
 
@@ -313,6 +315,9 @@ export default function App() {
   return (
     <div style={{ minHeight: '100vh', background: '#1a1a2e' }}>
       {leaveModal && <LeaveModal />}
+      {feedbackModal && (
+        <FeedbackModal room={room} playerId={playerId} isHost={isHost} onClose={() => setFeedbackModal(false)} />
+      )}
 
       {error && (
         <div style={{ position:'fixed', top:16, left:'50%', transform:'translateX(-50%)', background:'rgba(26,26,46,0.95)', color:'#f87171', padding:'10px 20px', borderRadius:8, zIndex:1000, fontSize:14, border:'1px solid rgba(248,113,113,0.4)', boxShadow:'0 0 12px rgba(248,113,113,0.2)' }}>
@@ -365,6 +370,27 @@ export default function App() {
           }}
         >
           ✕ Leave
+        </button>
+      )}
+      {!leaveModal && !feedbackModal && (
+        <button
+          onClick={() => setFeedbackModal(true)}
+          aria-label="Report a bug"
+          style={{
+            position: 'fixed',
+            bottom: 'calc(12px + env(safe-area-inset-bottom))',
+            right: 12,
+            zIndex: 999,
+            width: 40, height: 40, borderRadius: 20,
+            border: '1px solid rgba(255,179,71,0.3)',
+            background: 'rgba(26,26,46,0.85)',
+            color: 'rgba(255,179,71,0.85)',
+            fontSize: 17,
+            cursor: 'pointer',
+            backdropFilter: 'blur(4px)',
+          }}
+        >
+          🐛
         </button>
       )}
     </div>
