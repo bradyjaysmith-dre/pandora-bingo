@@ -51,6 +51,7 @@ export default function HomeScreen({ spotifyConnected, onLeaderboard }) {
   // const [pickMode, setPickMode] = useState('artists'); // Song mode retired — always artists
   const [musicSource, setMusicSource] = useState('audd'); // Default to mic detection
   const [gameMode, setGameMode] = useState('standard');
+  const [showMoreModes, setShowMoreModes] = useState(false);
   const [blindMode, setBlindMode] = useState(false);
   const [djPickCount, setDjPickCount] = useState(5);
   const [playlistName, setPlaylistName] = useState('');
@@ -91,7 +92,7 @@ export default function HomeScreen({ spotifyConnected, onLeaderboard }) {
         if (s.timeLimit) setTimeLimit(s.timeLimit);
         // if (s.pickMode) setPickMode(s.pickMode); // Song mode retired
         if (s.musicSource) setMusicSource(s.musicSource);
-        if (s.gameMode) setGameMode(s.gameMode);
+        if (s.gameMode) { setGameMode(s.gameMode); if (s.gameMode !== 'standard') setShowMoreModes(true); }
         if (s.blindMode !== undefined) setBlindMode(s.blindMode);
         if (s.djPickCount) setDjPickCount(s.djPickCount);
         if (s.playlistName) setPlaylistName(s.playlistName);
@@ -337,29 +338,50 @@ export default function HomeScreen({ spotifyConnected, onLeaderboard }) {
           <div style={s.gameModeSub}>{GAME_MODES.standard.description}</div>
         </div>
 
-        <div style={s.gameModeCard(gameMode === 'newlywed', GAME_MODES.newlywed.accent)} onClick={() => setGameMode('newlywed')}>
-          <div style={s.gameModeTitle(gameMode === 'newlywed', GAME_MODES.newlywed.accent)}>
-            {GAME_MODES.newlywed.label}
-            <span style={s.badge('rgba(255,179,71,0.15)', C.amber, 'rgba(255,179,71,0.4)')}>NEW</span>
+        <div
+          style={s.checkRow}
+          onClick={() => {
+            const next = !showMoreModes;
+            setShowMoreModes(next);
+            if (!next && gameMode !== 'standard') setGameMode('standard');
+          }}
+        >
+          <div>
+            <div style={s.checkLabel}>More game modes</div>
+            <div style={s.checkSub}>Newlywed, Gong Show, DJ Battle</div>
           </div>
-          <div style={s.gameModeSub}>{GAME_MODES.newlywed.description}</div>
+          <div style={s.checkBox(showMoreModes)}>
+            {showMoreModes && <span style={{ color: '#fff', fontSize: 13, fontWeight: 800 }}>✓</span>}
+          </div>
         </div>
 
-        <div style={s.gameModeCard(gameMode === 'gongshow', GAME_MODES.gongshow.accent)} onClick={() => setGameMode('gongshow')}>
-          <div style={s.gameModeTitle(gameMode === 'gongshow', GAME_MODES.gongshow.accent)}>
-            {GAME_MODES.gongshow.label}
-            <span style={s.badge('rgba(239,68,68,0.15)', '#ef4444', 'rgba(239,68,68,0.4)')}>NEW</span>
-          </div>
-          <div style={s.gameModeSub}>{GAME_MODES.gongshow.description}</div>
-        </div>
+        {showMoreModes && (
+          <>
+            <div style={s.gameModeCard(gameMode === 'newlywed', GAME_MODES.newlywed.accent)} onClick={() => setGameMode('newlywed')}>
+              <div style={s.gameModeTitle(gameMode === 'newlywed', GAME_MODES.newlywed.accent)}>
+                {GAME_MODES.newlywed.label}
+                <span style={s.badge('rgba(255,179,71,0.15)', C.amber, 'rgba(255,179,71,0.4)')}>NEW</span>
+              </div>
+              <div style={s.gameModeSub}>{GAME_MODES.newlywed.description}</div>
+            </div>
 
-        <div style={s.gameModeCard(gameMode === 'djbattle', GAME_MODES.djbattle.accent)} onClick={() => { setGameMode('djbattle'); setTimeLimit(40); }}>
-          <div style={s.gameModeTitle(gameMode === 'djbattle', GAME_MODES.djbattle.accent)}>
-            {GAME_MODES.djbattle.label}
-            <span style={s.badge('rgba(168,85,247,0.15)', '#a855f7', 'rgba(168,85,247,0.4)')}>NEW</span>
-          </div>
-          <div style={s.gameModeSub}>{GAME_MODES.djbattle.description}</div>
-        </div>
+            <div style={s.gameModeCard(gameMode === 'gongshow', GAME_MODES.gongshow.accent)} onClick={() => setGameMode('gongshow')}>
+              <div style={s.gameModeTitle(gameMode === 'gongshow', GAME_MODES.gongshow.accent)}>
+                {GAME_MODES.gongshow.label}
+                <span style={s.badge('rgba(239,68,68,0.15)', '#ef4444', 'rgba(239,68,68,0.4)')}>NEW</span>
+              </div>
+              <div style={s.gameModeSub}>{GAME_MODES.gongshow.description}</div>
+            </div>
+
+            <div style={s.gameModeCard(gameMode === 'djbattle', GAME_MODES.djbattle.accent)} onClick={() => { setGameMode('djbattle'); setTimeLimit(40); }}>
+              <div style={s.gameModeTitle(gameMode === 'djbattle', GAME_MODES.djbattle.accent)}>
+                {GAME_MODES.djbattle.label}
+                <span style={s.badge('rgba(168,85,247,0.15)', '#a855f7', 'rgba(168,85,247,0.4)')}>NEW</span>
+              </div>
+              <div style={s.gameModeSub}>{GAME_MODES.djbattle.description}</div>
+            </div>
+          </>
+        )}
 
         {gameMode === 'djbattle' && (
           <div style={{ padding: '14px 16px', borderRadius: 8, background: 'rgba(168,85,247,0.07)', border: '1px solid rgba(168,85,247,0.25)', marginBottom: 8 }}>
