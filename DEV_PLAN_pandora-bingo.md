@@ -308,3 +308,7 @@ Dre tested Session 2 against the live Railway deploy (iOS Safari hosting, Androi
 - "How to Play" video/GIF (Session 5, blocked on content)
 
 **Next:** once Dre completes the on-device items above (or decides to defer them further), Sessions 1-6 will all be through their initial build pass. No Session 7 is defined yet in this plan.
+
+### 2026-09-22 — `FEEDBACK_ADMIN_KEY` set and confirmed working
+
+Dre generated the key himself and set it directly in Railway's dashboard (deliberately not through Claude Code, so the secret value never touched this conversation/session log — see security discussion in this session). Claude Code verified what it could without ever seeing the key: confirmed the env var exists (name only, not value), confirmed the resulting redeploy succeeded, and confirmed `GET /api/feedback` still correctly 404s with no key or a wrong key. Dre then tested the real key himself against `https://pandora-bingo.up.railway.app/api/feedback?key=...` and confirmed it returns `[]` (empty — no reports submitted yet) instead of 404. The gated feedback-viewing endpoint from Session 6 is fully working end-to-end.
