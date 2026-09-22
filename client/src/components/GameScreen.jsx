@@ -389,6 +389,42 @@ function cardStyles() {
 
 // Host panel — shown in the Spotify host tab.
 // Host pastes a Spotify Jam link; it's broadcast to all players via game:updated.
+// ─── Manual click-to-mark grid ────────────────────────────────────────────────
+// Shared by all three music sources' manual-marking UI (Spotify's and AudD's
+// "didn't detect it" fallback, and Manual mode's primary marking screen).
+// Song mode is retired — room.songPool is always empty — so this marks a
+// predicted *artist* as played, not a song from a static pool.
+function ManualMarkGrid({ predictedArtists, playedSongs, compact }) {
+  if (predictedArtists.length === 0) {
+    return <div style={{fontSize:12,color:'#64748b'}}>No artists picked yet.</div>;
+  }
+  const itemStyle = (played) => ({
+    padding: compact ? '8px 10px' : '10px 12px', borderRadius: 8,
+    cursor: played ? 'default' : 'pointer',
+    background: played ? 'rgba(0,212,255,0.15)' : '#12122a',
+    border: played ? '1px solid rgba(0,212,255,0.3)' : '1px solid #2a2a4a',
+    opacity: played ? 0.55 : 1,
+  });
+  return (
+    <div style={{display:'grid',gridTemplateColumns:`repeat(auto-fill, minmax(${compact ? 140 : 160}px, 1fr))`,gap:compact ? 6 : 8}}>
+      {predictedArtists.map((name, i) => {
+        const played = playedSongs.some(p => p.artist === name);
+        return (
+          <div
+            key={i}
+            style={itemStyle(played)}
+            onClick={() => !played && socket.emit('host:play_song', { songTitle: name, songArtist: name })}
+          >
+            <div style={{fontSize: compact ? 12 : 13, fontWeight:600, color: played ? '#93c5fd' : '#e2e8f0'}}>
+              {played ? '✓ ' : ''}{name}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function SpotifyJamHostPanel({ room }) {
   const [input, setInput] = useState(room.spotifyJamLink || '');
   const [saved, setSaved] = useState(!!room.spotifyJamLink);
@@ -868,6 +904,18 @@ export default function GameScreen({ room, playerId, isHost, spotifyTokens, nowP
   const isGongShow = room.gameMode === 'gongshow';
   const isDJBattle = room.gameMode === 'djbattle';
 
+  // Every artist any confirmed player predicted — used by the manual
+  // click-to-mark-played UI below. Song mode is retired, so room.songPool
+  // is always empty; the host needs to mark a played *artist*, not a song.
+  const predictedArtists = (() => {
+    const seen = new Map();
+    room.players.forEach(p => (p.picks || []).forEach(pick => {
+      const key = pick.id || pick.name;
+      if (!seen.has(key)) seen.set(key, pick.name);
+    }));
+    return [...seen.values()].sort((a, b) => a.localeCompare(b));
+  })();
+
   const s = {
     wrap: { maxWidth:700, margin:'0 auto', padding:16, paddingBottom:'calc(16px + env(safe-area-inset-bottom))' },
     topBar: { display:'flex', alignItems:'center', justifyContent:'space-between', padding:'16px 0', marginBottom:8 },
@@ -906,13 +954,6 @@ export default function GameScreen({ room, playerId, isHost, spotifyTokens, nowP
     scoreName: (winning) => ({ fontSize:12, color: winning ? GC.green : GC.muted, marginBottom:4 }),
     scoreVal: (winning) => ({ fontSize:22, fontWeight:700, color: winning ? GC.green : GC.text, fontFamily:"'Orbitron', monospace" }),
     scoreGrid: { display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(180px, 1fr))', gap:8 },
-    hostSong: (played) => ({
-      padding:'10px 12px', borderRadius:8,
-      cursor: played ? 'default' : 'pointer',
-      background: played ? GC.cyanDim : GC.alt,
-      border: played ? `1px solid rgba(0,212,255,0.3)` : `1px solid ${GC.border}`,
-      opacity: played ? 0.55 : 1,
-    }),
     hostControls: { display:'flex', gap:8, marginTop:16, flexWrap:'wrap' },
     btnAdd: {
       padding:'8px 16px', borderRadius:8,
@@ -1126,20 +1167,10 @@ export default function GameScreen({ room, playerId, isHost, spotifyTokens, nowP
               )}
               <details style={{marginTop:12}}>
                 <summary style={{fontSize:12,color:'#64748b',cursor:'pointer',userSelect:'none',marginBottom:8}}>
-                  ⚠️ Song not detected? Tap to mark manually
+                  ⚠️ Artist not detected? Tap to mark manually
                 </summary>
                 <div style={{fontSize:12,color:'#475569',marginBottom:8}}>Use this if Spotify auto-detection misses a song (common on iOS).</div>
-                <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill, minmax(160px, 1fr))',gap:6}}>
-                  {(room.songPool||[]).map((song,i) => {
-                    const played = room.playedSongs.some(p => p.title === song.title);
-                    return (
-                      <div key={i} style={s.hostSong(played)} onClick={() => !played && socket.emit('host:play_song', { songTitle: song.title })}>
-                        <div style={{fontSize:12,fontWeight:600,color:played?'#93c5fd':'#e2e8f0',marginBottom:1}}>{played?'✓ ':''}{song.title}</div>
-                        <div style={{fontSize:11,color:'#64748b'}}>{song.artist}</div>
-                      </div>
-                    );
-                  })}
-                </div>
+                <ManualMarkGrid predictedArtists={predictedArtists} playedSongs={room.playedSongs} compact />
               </details>
             </>
           ) : isAuddMode ? (
@@ -1347,40 +1378,20 @@ export default function GameScreen({ room, playerId, isHost, spotifyTokens, nowP
               {/* ── Manual fallback ── */}
               <details style={{marginTop:4}}>
                 <summary style={{fontSize:12,color:'#64748b',cursor:'pointer',userSelect:'none',marginBottom:8}}>
-                  Song not detected? Mark manually
+                  Artist not detected? Mark manually
                 </summary>
-                <div style={{fontSize:12,color:'#475569',marginBottom:8}}>Tap a song to mark it played without mic detection.</div>
-                <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill, minmax(160px, 1fr))',gap:6}}>
-                  {(room.songPool||[]).map((song,i) => {
-                    const played = room.playedSongs.some(p => p.title === song.title);
-                    return (
-                      <div key={i} style={s.hostSong(played)} onClick={() => !played && socket.emit('host:play_song', { songTitle: song.title })}>
-                        <div style={{fontSize:12,fontWeight:600,color:played?'#93c5fd':'#e2e8f0',marginBottom:1}}>{played?'✓ ':''}{song.title}</div>
-                        <div style={{fontSize:11,color:'#64748b'}}>{song.artist}</div>
-                      </div>
-                    );
-                  })}
-                </div>
+                <div style={{fontSize:12,color:'#475569',marginBottom:8}}>Tap an artist to mark it played without mic detection.</div>
+                <ManualMarkGrid predictedArtists={predictedArtists} playedSongs={room.playedSongs} compact />
               </details>
             </>
           ) : (
             <>
-              <div style={{fontSize:13,color:'#64748b',marginBottom:8}}>Click a song to mark it as played</div>
-              <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill, minmax(180px, 1fr))',gap:8}}>
-                {(room.songPool||[]).map((song,i) => {
-                  const played = room.playedSongs.some(p => p.title === song.title);
-                  return (
-                    <div key={i} style={s.hostSong(played)} onClick={() => !played && socket.emit('host:play_song', { songTitle: song.title })}>
-                      <div style={{fontSize:13,fontWeight:600,color:played?'#93c5fd':'#e2e8f0',marginBottom:2}}>{played?'✓ ':''}{song.title}</div>
-                      <div style={{fontSize:12,color:'#64748b'}}>{song.artist}</div>
-                    </div>
-                  );
-                })}
-              </div>
+              <div style={{fontSize:13,color:'#64748b',marginBottom:8}}>Click an artist to mark it as played</div>
+              <ManualMarkGrid predictedArtists={predictedArtists} playedSongs={room.playedSongs} />
               {room.playedSongs.length > 0 && (
                 <div>
                   <div style={{fontSize:12,color:'#64748b',marginTop:12,marginBottom:6}}>Played:</div>
-                  <div style={s.playedList}>{room.playedSongs.map((song,i) => <span key={i} style={s.playedChip}>{song.title} — {song.artist}</span>)}</div>
+                  <div style={s.playedList}>{room.playedSongs.map((song,i) => <span key={i} style={s.playedChip}>{song.artist}</span>)}</div>
                 </div>
               )}
             </>

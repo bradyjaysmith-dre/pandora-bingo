@@ -269,7 +269,11 @@ io.on('connection', (socket) => {
   // ── Rejoin existing session ──────────────────────────────────────────────
   wrapHandler(io, socket, 'player:rejoin', ({ roomCode, playerId }) => {
     const result = game.rejoinRoom(roomCode, playerId);
-    if (result.error) { socket.emit('room:rejoin_failed', { message: result.error }); return; }
+    if (result.error) {
+      console.warn('Rejoin failed:', playerId, 'room:', roomCode, '-', result.error);
+      socket.emit('room:rejoin_failed', { message: result.error });
+      return;
+    }
     socket.join(roomCode);
     socket.data.roomCode = roomCode;
     socket.data.playerId = playerId;
@@ -336,12 +340,17 @@ io.on('connection', (socket) => {
     if (existingRoom) {
       const nameTaken = existingRoom.players.some(p => p.name.toLowerCase() === playerName.toLowerCase());
       if (nameTaken) {
+        console.warn('Join rejected — name taken:', playerName, 'room:', roomCode);
         socket.emit('error', { message: 'That name is already taken in this room. Pick a different one!' });
         return;
       }
     }
     const result = game.joinRoom(roomCode, { playerId, playerName });
-    if (result.error) { socket.emit('error', { message: result.error }); return; }
+    if (result.error) {
+      console.warn('Join failed:', playerName, 'room:', roomCode, '-', result.error);
+      socket.emit('error', { message: result.error });
+      return;
+    }
     socket.join(roomCode);
     socket.data.roomCode = roomCode;
     socket.data.playerId = playerId;
@@ -528,9 +537,14 @@ io.on('connection', (socket) => {
   });
 
   // ── Manual song play ─────────────────────────────────────────────────────
-  wrapHandler(io, socket, 'host:play_song', ({ songTitle }) => {
+  // songArtist is required in practice now — song mode is retired, so the
+  // client always sends the artist name as both songTitle and songArtist
+  // (see ManualMarkGrid in GameScreen.jsx). Without songArtist, game.playSong
+  // can't match against room.songPool (always empty) or construct a artist-
+  // matchable song object.
+  wrapHandler(io, socket, 'host:play_song', ({ songTitle, songArtist }) => {
     const { roomCode } = socket.data;
-    const result = game.playSong(roomCode, songTitle, null);
+    const result = game.playSong(roomCode, songTitle, songArtist || null);
     if (result.error) { socket.emit('error', { message: result.error }); return; }
     if (result.alreadyPlayed) return;
     broadcastSongResult(roomCode, result, songTitle);
