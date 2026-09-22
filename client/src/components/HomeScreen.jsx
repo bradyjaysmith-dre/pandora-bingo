@@ -239,7 +239,11 @@ export default function HomeScreen({ spotifyConnected, onLeaderboard }) {
 
   const hostGame = () => {
     if (!name.trim()) { alert('Enter your name'); return; }
-    if (!playlistName.trim()) { alert('Enter a playlist name'); return; }
+    // Standard mode doesn't require a playlist name today — the artist pool
+    // isn't actually driven by it yet (dynamic-songs.js just returns a
+    // shuffled static pool regardless of name). Other modes still require it:
+    // DJ Battle and Newlywed/Gong Show show/use the name more directly.
+    if (gameMode !== 'standard' && !playlistName.trim()) { alert('Enter a playlist name'); return; }
     if (musicSource === 'spotify' && !spotifyConnected) { alert('Connect your Spotify account first'); return; }
     const resolvedSource = (musicSource === 'spotify' && !spotifyAvailable) ? 'manual' : musicSource;
     socket.emit('host:create', {
@@ -529,7 +533,7 @@ export default function HomeScreen({ spotifyConnected, onLeaderboard }) {
         {/* ── Universal playlist name (all modes) ── */}
         {gameMode !== 'djbattle' && (
           <>
-            <label style={s.label}>Playlist name <span style={{ color: C.muted, fontWeight: 400, textTransform: 'none', fontSize: 10 }}>(used to suggest artists to players)</span></label>
+            <label style={s.label}>Playlist name <span style={{ color: C.muted, fontWeight: 400, textTransform: 'none', fontSize: 10 }}>{gameMode === 'standard' ? '(optional)' : '(used to suggest artists to players)'}</span></label>
             <input
               style={s.input}
               value={playlistName}
